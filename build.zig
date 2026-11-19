@@ -10,7 +10,23 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe_mod = rootModule(b, target, optimize, false);
+    // The library other projects import as `zstrata` (src/lib.zig): the thread pool, the vector
+    // helpers and the radix sorts. It needs nothing but std.
+    const lib = b.addModule("zstrata", .{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const lib_tests = b.addRunArtifact(b.addTest(.{ .root_module = lib }));
+    b.step("test-lib", "Run the library's tests (no GPU needed)").dependOn(&lib_tests.step);
+
+    // A project that only imports the library passes this, so the measuring program, and with
+    // it the Vulkan packages and the shader compiler, are never touched.
+    const lib_only = b.option(bool, "lib-only", "Only the library module: skip the measuring program") orelse false;
+    if (lib_only) return;
+
+    // Null while the Vulkan packages are still being fetched; the build then runs again.
+    const exe_mod = rootModule(b, target, optimize, false) orelse return;
     const exe = b.addExecutable(.{ .name = "zstrata", .root_module = exe_mod });
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
@@ -43,6 +59,7 @@ pub fn build(b: *std.Build) void {
     useLocalVulkan(b, tests);
     const test_step = b.step("test", "Run all tests (CPU and GPU)");
     test_step.dependOn(&tests.step);
+    test_step.dependOn(&lib_tests.step);
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = spread_mod })).step);
 
     // ThreadSanitizer over the CPU-side tests (names start with "cpu"); the GPU tests stay out
@@ -50,16 +67,17 @@ pub fn build(b: *std.Build) void {
     // linux-gnu target.
     const tsan_target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu });
     const filter = b.option([]const u8, "test-filter", "Only tests whose name contains this (test-tsan: default \"cpu\")");
-    const tsan_tests = b.addTest(.{ .root_module = rootModule(b, tsan_target, optimize, true), .filters = &.{filter orelse "cpu"}, .use_llvm = true });
+    const tsan_tests = b.addTest(.{ .root_module = rootModule(b, tsan_target, optimize, true) orelse return, .filters = &.{filter orelse "cpu"}, .use_llvm = true });
     const tsan_run = b.addRunArtifact(tsan_tests);
     useLocalVulkan(b, tsan_run);
     b.step("test-tsan", "Run the CPU-side (threaded) tests under ThreadSanitizer").dependOn(&tsan_run.step);
 }
 
-fn rootModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, tsan: bool) *std.Build.Module {
-    const vulkan = b.dependency("vulkan", .{
-        .registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml"),
-    }).module("vulkan-zig");
+fn rootModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, tsan: bool) ?*std.Build.Module {
+    const headers = b.lazyDependency("vulkan_headers", .{}) orelse return null;
+    const vulkan = (b.lazyDependency("vulkan", .{
+        .registry = headers.path("registry/vk.xml"),
+    }) orelse return null).module("vulkan-zig");
     // libc so std.DynLib uses the system dlopen: the loader and the RADV driver it pulls in are
     // ordinary glibc shared objects.
     const mod = b.createModule(.{

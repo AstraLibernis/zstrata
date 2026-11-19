@@ -55,4 +55,25 @@ Runs on Linux and Windows from the same source; OS-specific calls sit behind
 
 `src/gpu.zig` and the GPU probe shaders come from an earlier Vulkan lab project by the same author.
 
-GPL-3.0-or-later.
+## As a library
+
+Other projects can import the parts that measured fastest (`src/lib.zig`):
+
+- `Pool`: the thread pool (`parallelFor` over a range; `chunkFor` says how the range is cut).
+- `simd`: the vector width for the CPU being built for, and a multiply-add that is fused only
+  where the CPU has the instruction.
+- `sort`: radix sorts for unsigned integers, for floats, and for row indices ordered by a
+  float column.
+
+In the other project's `build.zig`:
+
+    const zstrata = b.dependency("zstrata", .{ .target = target, .optimize = optimize, .@"lib-only" = true });
+    exe.root_module.addImport("zstrata", zstrata.module("zstrata"));
+
+`lib-only` leaves out the measuring program, so neither the Vulkan packages nor the shader
+compiler are needed. `zig build test-lib` runs the library's tests without a GPU.
+
+## Licence
+
+The measuring program is GPL-3.0-or-later (`COPYING`). The library files `src/lib.zig` and
+`src/lib/` are LGPL-3.0-or-later (`COPYING.LESSER`); each file's header says which applies.
