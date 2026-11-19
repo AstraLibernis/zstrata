@@ -1,6 +1,6 @@
 .{
     .name = .zstrata,
-    .version = "0.0.0",
+    .version = "0.1.0",
     .dependencies = .{
         .vulkan = .{
             .url = "git+https://github.com/Snektron/vulkan-zig?ref=zig-0.17-compat#1fa628fd49d89468241c2cab14bad41a312e79fc",
