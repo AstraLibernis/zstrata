@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Crossover task "chains": many independent step-by-step chains, one lane each. Every step
+// needs the one before (x = 3.9 x (1 - x), the logistic map), so one chain cannot be split up;
+// only many chains at once can use the GPU.
+#version 450
+layout(local_size_x = 64) in;
+layout(push_constant) uniform Push { uint chains; uint steps; } pc;
+layout(set = 0, binding = 0) writeonly buffer Out { float y[]; };
+
+void main() {
+    uint c = gl_GlobalInvocationID.x;
+    if (c >= pc.chains) return;
+    precise float x = 0.1 + 0.8 * float(c % 1024u) / 1024.0;
+    for (uint s = 0; s < pc.steps; s++) {
+        precise float t = 3.9 * x;
+        x = t * (1.0 - x);
+    }
+    y[c] = x;
+}

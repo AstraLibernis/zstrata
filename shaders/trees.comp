@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Crossover task "trees": an ensemble of complete binary decision trees (DEPTH levels), one
+// lane per row. Each lane walks every tree from the root, going left or right on one feature
+// per node: lanes in a subgroup take different paths, so their memory reads scatter. The
+// prediction is the sum of the leaf values in tree order (same order as the CPU, so equal bits).
+#version 450
+layout(local_size_x = 64) in;
+layout(constant_id = 0) const uint DEPTH = 8;
+layout(constant_id = 1) const uint FEATURES = 32;
+layout(push_constant) uniform Push { uint rows; uint trees; } pc;
+layout(set = 0, binding = 0) readonly buffer Rows { float x[]; };          // rows x FEATURES
+layout(set = 0, binding = 1) readonly buffer Feat { uint feat[]; };        // trees x (2^DEPTH - 1)
+layout(set = 0, binding = 2) readonly buffer Thr { float thr[]; };         // trees x (2^DEPTH - 1)
+layout(set = 0, binding = 3) readonly buffer Leaf { float leaf[]; };       // trees x 2^DEPTH
+layout(set = 0, binding = 4) writeonly buffer Out { float y[]; };
+
+void main() {
+    uint r = gl_GlobalInvocationID.x;
+    if (r >= pc.rows) return;
+    const uint inner = (1u << DEPTH) - 1u;
+    float sum = 0.0;
+    for (uint t = 0; t < pc.trees; t++) {
+        uint node = 0;
+        for (uint d = 0; d < DEPTH; d++) {
+            uint k = t * inner + node;
+            node = 2u * node + (x[r * FEATURES + feat[k]] > thr[k] ? 2u : 1u);
+        }
+        sum += leaf[t * (inner + 1u) + (node - inner)];
+    }
+    y[r] = sum;
+}

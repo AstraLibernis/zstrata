@@ -1,0 +1,19 @@
+device       AMD Radeon RX 9070 XT
+driver       AMD proprietary driver (26.10.1 (LLPC)), id amd_proprietary, conformance 1.4.3.3
+vulkan       1.4.359
+subgroups    32..64 lanes, up to 4294967295 per workgroup
+workgroup    1024 invocations, size 1024 x 1024 x 1024, shared memory 32 KiB
+buffers      storage range 4095 MiB, max buffer 2048 MiB, allocations up to 4294967295
+push consts  256 bytes; timestamp period 10 ns
+heap 0       15924 MiB
+heap 1       16304 MiB device-local
+extension    VK_KHR_cooperative_matrix: yes
+extension    VK_KHR_shader_bfloat16: yes
+extension    VK_EXT_shader_float8: yes
+extension    VK_KHR_pipeline_executable_properties: yes
+extension    VK_EXT_subgroup_size_control: yes
+extension    VK_KHR_shader_float16_int8: yes
+extension    VK_EXT_shader_atomic_float: yes
+extension    VK_EXT_memory_budget: yes
+extension    VK_KHR_timeline_semaphore: yes
+extensions   224 in all

@@ -1,0 +1,17 @@
+.{
+    .name = .zstrata,
+    .version = "0.0.0",
+    .dependencies = .{
+        .vulkan = .{
+            .url = "git+https://github.com/Snektron/vulkan-zig?ref=zig-0.17-compat#1fa628fd49d89468241c2cab14bad41a312e79fc",
+            .hash = "vulkan-0.0.0-r7Ytxy2BAwCPqBJUCXp6XXMwWqFD3DNrMLWWQvRRSXOC",
+        },
+        .vulkan_headers = .{
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.341.tar.gz",
+            .hash = "N-V-__8AABJ5QgLfX-rcpaOGlg1YXcabW-m5cl5HEKkRsi3f",
+        },
+    },
+    .minimum_zig_version = "0.17.0",
+    .paths = .{ "build.zig", "build.zig.zon", "src", "shaders", "COPYING" },
+    .fingerprint = 0xad554d477529c6d5,
+}

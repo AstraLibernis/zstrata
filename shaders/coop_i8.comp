@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// int8_t inputs, int accumulators: see coop.glsl.
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+#define TA int8_t
+#define TC int
+#define ONE 1
+#include "coop.glsl"

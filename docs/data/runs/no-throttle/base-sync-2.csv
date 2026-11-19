@@ -1,0 +1,11 @@
+device,probe,variant,x,y,value,unit,ms,vgprs,sgprs,spilled_vgprs,scratch_bytes,lds_bytes,subgroups_per_simd,vopd,smem
+cpu,sync,spawn-join,1,0,114.8705,us,0.1149,,,,,,,,
+cpu,sync,spawn-join-1mib,1,0,70.4155,us,0.0704,,,,,,,,
+cpu,sync,pool-hot,2,0,0.1217,us,0.0001,,,,,,,,
+cpu,sync,pool-after-idle,2,0,9.7000,us,0.0097,,,,,,,,
+cpu,sync,pool-hot,4,0,0.2632,us,0.0003,,,,,,,,
+cpu,sync,pool-after-idle,4,0,16.7000,us,0.0167,,,,,,,,
+cpu,sync,pool-hot,8,0,0.5445,us,0.0005,,,,,,,,
+cpu,sync,pool-after-idle,8,0,25.1000,us,0.0251,,,,,,,,
+cpu,sync,pool-hot,16,0,1.4215,us,0.0014,,,,,,,,
+cpu,sync,pool-after-idle,16,0,133.9000,us,0.1339,,,,,,,,

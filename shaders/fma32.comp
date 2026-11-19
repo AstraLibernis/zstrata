@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// fp32 version of fma.glsl: 2 FLOPs per fma per lane.
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define T float
+#define SUM(x) (x)
+#include "fma.glsl"

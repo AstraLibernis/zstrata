@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// bfloat16_t inputs, float accumulators: see coop.glsl.
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_bfloat16 : require
+#define TA bfloat16_t
+#define TC float
+#define ONE 1.0
+#include "coop.glsl"

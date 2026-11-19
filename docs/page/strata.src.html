@@ -1,0 +1,395 @@
+<title>zstrata Machine Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+__CSS__
+<style>
+/* Strata additions: two ladders side by side with the link between them, and the verdict table. */
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 9rem minmax(0, 1fr); gap: 10px; align-items: stretch; margin: 8px 0 40px; }
+.col { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.col h3 { font-size: 0.8rem; font-family: var(--f-mono); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.lv { padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 2px; }
+.lv .n { font-family: var(--f-display); font-weight: 600; }
+.lv .v { font-family: var(--f-mono); font-size: 0.8rem; color: var(--ink-2); }
+.lv .v b { color: var(--ink); font-weight: 500; }
+.link { display: grid; align-content: center; justify-items: center; gap: 8px; text-align: center; padding: 10px 6px;
+  border-left: 1px dashed var(--axis); border-right: 1px dashed var(--axis); }
+.link .n { font-family: var(--f-display); font-weight: 600; }
+.link .v { font-family: var(--f-mono); font-size: 0.78rem; color: var(--ink-2); }
+.link .v b { color: var(--ink); font-weight: 500; display: block; font-size: 0.95rem; }
+@media (max-width: 760px) {
+  .cols { grid-template-columns: minmax(0, 1fr); }
+  .link { border: none; border-top: 1px dashed var(--axis); border-bottom: 1px dashed var(--axis); }
+}
+.verdict { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.verdict th { position: static; text-align: left; font-family: var(--f-mono); font-weight: 500; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--axis); background: none; }
+.verdict td { text-align: left; white-space: normal; padding: 9px 10px; border-bottom: 1px solid var(--grid); font-family: var(--f-body); font-size: 0.88rem; vertical-align: top; }
+.verdict td:first-child { font-weight: 600; white-space: nowrap; }
+.verdict td:nth-child(2) { min-width: 13rem; }
+.chip { display: inline-block; font-family: var(--f-mono); font-size: 0.74rem; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); white-space: nowrap; }
+.chip.cpu { background: color-mix(in srgb, var(--s2) 16%, transparent); }
+.chip.gpu { background: color-mix(in srgb, var(--s1) 16%, transparent); }
+.vwrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .grid3 { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">zstrata · measured on this machine, one method for every device</div>
+  <h1>Where work belongs on this machine</h1>
+  <p class="lede">Every layer of the CPU, the RAM, the link to the GPU and the GPU itself, measured the same way. Then the same five tasks run on one core, on all threads, and on the GPU, to see which kind of work belongs where.</p>
+  <div class="meta"><span>Ryzen 7 9800X3D · 8 cores / 16 threads · 96 MiB L3</span><span>RX 9070 XT · RADV</span><span>measured 2026-10-15</span><span>medians of 5 runs</span><span>generation 1</span></div>
+  <p style="padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; max-width: none; font-size: 0.9rem; color: var(--ink-2);"><b style="color: var(--ink);">Two generations of tests.</b> Everything down to the placement guide is <b style="color: var(--ink);">generation 1</b>: Linux, the RADV driver, Zig 0.16, measured 2026-10-15. <a href="#gen2" style="color: var(--accent);">Generation 2</a> ran on Windows on 2026-11-08 and -09 with corrected and new tests, and has its own section below. The generations use different test versions and drivers: compare numbers within a generation, not across. Superscript numbers mark generation-1 figures that generation 2 found wrong or that differ by platform (<a href="#notes" style="color: var(--accent);">notes</a>).</p>
+</header>
+
+<section class="tier-sec" id="verdict" style="border-top: none; margin-top: 0; padding-top: 0;">
+  <div class="find">
+    <div class="eyebrow">The answer first</div>
+    <h2>Which side wins, by kind of work</h2>
+    <p>"Wins from" is the smallest tested size at which the GPU, including sending the data and reading the result back, beats the best of one core and all threads. The resident column is the same with the data already on the GPU.</p>
+  </div>
+  <div class="vwrap"><table class="verdict" id="verdict-table"></table></div>
+</section>
+
+<section class="tier-sec" id="layers">
+  <div class="find">
+    <div class="eyebrow">The layers</div>
+    <h2>Two stacks of memory, one narrow bridge</h2>
+    <p>Each side has its own ladder of storage, from tiny and fast to large and slow. The link between them is slower than either side's main memory, and every trip across has a fixed cost.</p>
+  </div>
+  <div class="cols">
+    <div class="col">
+      <h3>CPU · one core's view</h3>
+      <div class="lv"><span class="n">Registers</span><span class="v"><b>32 vector registers</b> · AVX-512, 16 floats each</span></div>
+      <div class="lv"><span class="n">L1</span><span class="v"><b>1.0 ns</b> · 48 KiB per core · 330 GB/s</span></div>
+      <div class="lv"><span class="n">L2</span><span class="v"><b>2.9 ns</b> · 1 MiB per core · ~250 GB/s</span></div>
+      <div class="lv"><span class="n">L3 (X3D)</span><span class="v"><b>10–17 ns</b> · 96 MiB shared · ~150 GB/s</span></div>
+      <div class="lv"><span class="n">RAM</span><span class="v"><b>80–88 ns</b> · 60 GB/s, one thread fills it</span></div>
+    </div>
+    <div class="link">
+      <span class="n">PCIe link</span>
+      <span class="v"><b>34–37 µs<sup>2</sup></b>per round trip</span>
+      <span class="v"><b>22–28 GB/s</b>bulk copies</span>
+      <span class="v"><b>0.07 GB/s</b>CPU reading VRAM</span>
+    </div>
+    <div class="col">
+      <h3>GPU · one subgroup's view</h3>
+      <div class="lv"><span class="n">Registers</span><span class="v"><b>256 per lane</b> · 64 lanes per subgroup</span></div>
+      <div class="lv"><span class="n">Shared memory / L0</span><span class="v"><b>28 ns</b> · 64 KiB per workgroup · 13–25 TB/s<sup>1</sup></span></div>
+      <div class="lv"><span class="n">L2</span><span class="v"><b>75–90 ns</b> · ~8 MiB · 12–19 TB/s<sup>1</sup></span></div>
+      <div class="lv"><span class="n">Infinity Cache</span><span class="v"><b>~145 ns</b> · ~64 MiB · 5–13 TB/s<sup>1</sup></span></div>
+      <div class="lv"><span class="n">VRAM</span><span class="v"><b>~310 ns</b> · 16 GB · 640 GB/s</span></div>
+    </div>
+  </div>
+  <div class="pair"><div id="c-lat"></div><div id="c-bw"></div></div>
+  <div class="find" style="margin-top: 8px;">
+    <ul>
+      <li><b>The CPU waits less; the GPU moves more.</b> A random read from the CPU's L1 takes 1 ns, against 28 ns for the GPU's nearest cache, and RAM answers in 85 ns where VRAM takes 310. But the GPU streams 11× more from VRAM (640 GB/s vs 60) and 7–10× more from its caches.<sup>1</sup></li>
+      <li><b>The X3D cache is the CPU's big asset:</b> 96 MiB at 10–17 ns, more than the GPU's 64 MiB Infinity Cache and about 10× faster to reach.</li>
+      <li><b>The bridge is the narrowest part.</b> Bulk copies run at 22–28 GB/s, below either side's main memory. One round trip costs 34–37 µs<sup>2</sup>, which is about 11 million floating-point operations on one CPU core.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="tier-sec" id="compute">
+  <div class="find">
+    <div class="eyebrow">Arithmetic</div>
+    <h2>From one scalar core to the matrix units: 19,000×</h2>
+    <p>Peak multiply-add throughput measured at each level, on a log scale. Each step up needs work shaped for it: vectors for SIMD, many independent items for threads and the GPU, tiles for the matrix units.</p>
+  </div>
+  <div id="c-peaks"></div>
+</section>
+
+<section class="tier-sec" id="cross">
+  <div class="find">
+    <div class="eyebrow">Crossovers</div>
+    <h2>Five tasks, three places, every size</h2>
+    <p>Time per run, both axes on log scales; lower is better. <b>gpu-kernel</b> is the GPU's own work, <b>gpu-resident</b> adds the round trip (the data already on the GPU), and <b>gpu-with-transfer</b> is the whole trip a program pays. Every GPU result was checked against the CPU's at every size.</p>
+  </div>
+  <div class="grid3">
+    <div id="c-map"></div><div id="c-nets"></div>
+    <div id="c-trees"></div><div id="c-chains"></div>
+  </div>
+  <div id="c-chain-long"></div>
+  <div class="find">
+    <ul>
+      <li><b>map (y = a·x + b):</b> shipping data never pays. Sending 64M floats and fetching the result takes 39 ms, while all CPU threads finish in 11 ms. If the data already lives on the GPU it is 12× faster there (0.9 ms).</li>
+      <li><b>nets (64-wide networks):</b> uniform and compute-heavy. The GPU wins from 64 networks even with transfers. At 4,096 networks it is 3.6× faster than all CPU threads including transfers, and 30× when the weights already live on the GPU.</li>
+      <li><b>trees (128 decision trees, depth 8):</b> branchy, with scattered reads. Below 4K rows the GPU is slower than the CPU threads. A lane walking 1,024 dependent nodes waits on memory at every step: 313 µs for 256 rows. At 2M rows it is only 2.5× faster than 16 threads.</li>
+      <li><b>chains (many 1,000-step sequences):</b> each chain is step by step, but there are many. The GPU wins from 64K chains.</li>
+      <li><b>chain-long (one sequence):</b> nothing to spread. One CPU core does a step in 1.1 ns, the GPU takes 8–16 ns, and threads cannot help at all.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="tier-sec" id="cpu">
+  <div class="find">
+    <div class="eyebrow">Inside the CPU</div>
+    <h2>Vectors, independent work, one thread per core</h2>
+    <ul>
+      <li><b>AVX-512 is 16× scalar</b> (0.33 vs 0.02 TFLOP/s per core), but only with at least 8 independent chains of work. With one chain each multiply-add waits about 4 cycles for the previous one.</li>
+      <li><b>Past 28 live vectors the registers run out</b> (AVX-512 has 32) and speed halves. This is the CPU's version of the GPU's register cliff, gentler because the spill goes to L1.</li>
+      <li><b>SMT adds nothing for arithmetic.</b> 8 threads on 8 cores reach 2.67 TFLOP/s and 16 threads also 2.67. 12 threads are slower (2.0) because 4 cores carry two threads and the rest wait for them.</li>
+      <li><b>A mispredicted branch costs about 4.4 ns</b> (2.35 ns per item on random data vs 0.19 predictable). Branchless code takes 0.38 ns either way.</li>
+      <li><b>Handing work to threads:</b> starting a new thread costs 9 µs, and a round trip on a warm pool 0.14–1.0 µs. A pool that has gone to sleep takes 26–30 µs to wake.</li>
+      <li><b>Freshly allocated memory writes at 4.6 GB/s</b>, and the same memory written again at 10.4. The first touch pays for the operating system to supply each page.</li>
+    </ul>
+  </div>
+  <div class="pair"><div id="c-cpu-alu"></div><div id="c-cpu-threads"></div></div>
+  <div class="pair"><div id="c-cpu-branch"></div><div id="c-cpu-sync"></div></div>
+</section>
+
+<section class="tier-sec" id="link">
+  <div class="find">
+    <div class="eyebrow">The link</div>
+    <h2>Write straight into VRAM, read back by copy</h2>
+    <ul>
+      <li><b>Direct writes into VRAM</b> (resizable BAR) reach 22 GB/s at any size and skip a staging copy. Staged uploads top out at 14 GB/s.</li>
+      <li><b>Never read VRAM directly from the CPU:</b> 0.07 GB/s, 150× slower than letting the GPU copy into CPU memory (10–13 GB/s).</li>
+      <li><b>Small transfers are all overhead:</b> 4 KiB staged takes as long as a round trip (about 40 µs).</li>
+    </ul>
+  </div>
+  <div id="c-link"></div>
+</section>
+
+<section class="tier-sec" id="gpu">
+  <div class="find">
+    <div class="eyebrow">Inside the GPU</div>
+    <h2>The GPU map, in short</h2>
+    <p>The full GPU map is its own page (first built in an earlier Vulkan lab project, measured again here with the same probes). The points that matter for placement:</p>
+    <ul>
+      <li><b>fp32 peak 50 TFLOP/s with 64-lane subgroups</b>, half that with 32-lane ones. Matrix units: fp16 211, fp8 391, int8 398.</li>
+      <li><b>256 registers per lane, then a 25× cliff.</b> A subgroup costs the same however many of its 64 lanes are busy.</li>
+      <li><b>Networks 64 wide with weights in registers are the best fp32 layout</b> (11.8 TFLOP/s). Pack narrower networks several to a subgroup.</li>
+    </ul>
+  </div>
+  <div id="c-gpu-mlp"></div>
+</section>
+
+<section class="tier-sec" id="rules">
+  <div class="find">
+    <div class="eyebrow">Placement guide</div>
+    <h2>Where to put work and data</h2>
+  </div>
+  <div class="rules">
+    <div class="rule"><p><b>Below about 40 µs of CPU work, stay on the CPU.</b> One GPU round trip costs 34–37 µs<sup>2</sup> before any work happens.</p></div>
+    <div class="rule"><p><b>Move work to the data, not data to the work.</b> The link (22–28 GB/s) is slower than the CPU reading its own RAM (60 GB/s). Simple per-item math on CPU-side data never pays to ship.</p></div>
+    <div class="rule"><p><b>Once data is on the GPU, keep it there across steps.</b> The same map is 3.5× slower than the CPU when shipped each time, and 12× faster when resident. Populations, training state and simulations should live in VRAM between generations.</p></div>
+    <div class="rule"><p><b>Send the GPU uniform, compute-heavy work on many items:</b> network populations (from 64 networks), many independent simulations (from ~64K). Write inputs straight into VRAM, and read results back by GPU copy, never by reading VRAM from the CPU.</p></div>
+    <div class="rule"><p><b>Keep branchy, scattered and sequential work on the CPU:</b> tree models, parsing, decision logic, any single chain of dependent steps. The GPU gains little on branchy work (2.5× over 16 threads at 2M rows) and loses on small batches and single chains.</p></div>
+    <div class="rule"><p><b>On the CPU: AVX-512 with 8–28 independent chains, one thread per core, a warm pool, allocate once.</b> That's 16× from vectors and 8× from cores. SMT adds nothing for arithmetic, and a sleeping pool costs 26–30 µs to wake.</p></div>
+    <div class="rule"><p><b>Size working sets to a cache level.</b> CPU: 1 MiB per core in L2, up to ~64 MiB in the X3D L3 before RAM latency shows. GPU: 8 MiB in L2, 64 MiB in Infinity Cache, and fit per-lane state under 256 registers.</p></div>
+  </div>
+</section>
+
+<section class="tier-sec" id="gen2" style="border-top: 3px solid var(--accent);">
+  <div class="find">
+    <div class="eyebrow">Generation 2 · Windows 11 · 2026-11-08 and -09</div>
+    <h2>The same machine, re-measured with corrected and new tests</h2>
+    <p>Windows 11 Pro, AMD's own driver 26.10.1 (not RADV), Zig 0.17.1, the process at below-normal priority. Medians of 4 full runs unless noted. These are a later generation of tests than everything above: some probes changed, so a generation-2 number re-measures a generation-1 number only where the table below says the probe is unchanged.</p>
+  </div>
+  <div class="vwrap"><table class="verdict">
+    <tr><th></th><th>Generation 1 (above)</th><th>Generation 2 (this section)</th></tr>
+    <tr><td>Platform</td><td>Linux in a container, RADV (Mesa 26.1.8), Zig 0.16</td><td>Windows 11, AMD driver 26.10.1, Zig 0.17.1</td></tr>
+    <tr><td>GPU read bandwidth</td><td>1,024 workgroups (more than the GPU holds, so they ran in two batches), a buffer of zeros, loose read order</td><td>256 and 512 workgroups (all on the GPU at once), random data, one strict sweep</td></tr>
+    <tr><td>New tests</td><td>none</td><td>CPU clock, a self-check that flags disturbed runs, a round trip split into phases, behaviour after idle, batching, ways to wait, 4-wide loads in network kernels</td></tr>
+    <tr><td>Unchanged tests</td><td colspan="2">CPU arithmetic, latency, bandwidth and branches; GPU arithmetic, latency and matrix units; the five crossover tasks. Differences there come from the operating system and the driver.</td></tr>
+  </table></div>
+  <div class="vwrap"><table class="verdict">
+    <tr><th>GPU level</th><th>Holds</th><th>Read speed, generation 2</th><th>Generation 1 said</th></tr>
+    <tr><td>Nearest caches</td><td>up to 2 MiB in all</td><td>21–22 TB/s</td><td>13–25 TB/s<sup>1</sup></td></tr>
+    <tr><td>L2</td><td>up to 8 MiB</td><td>6.1–8.5 TB/s</td><td>12–19 TB/s<sup>1</sup></td></tr>
+    <tr><td>Infinity Cache</td><td>up to 64 MiB</td><td>2.3 TB/s</td><td>5–13 TB/s<sup>1</sup></td></tr>
+    <tr><td>VRAM</td><td>16 GB</td><td>0.64 TB/s</td><td>0.64 TB/s</td></tr>
+  </table></div>
+  <div class="pair"><div id="c2-lat"></div><div id="c2-bw"></div></div>
+  <div class="find">
+    <ul>
+      <li><b>The GPU's caches lead the CPU's by 2–5×</b>, not 7–10×: L2 6.1–8.5 TB/s against the CPU's 1.6–2.3 (all threads), the Infinity Cache 2.3 TB/s against the CPU's L3 0.65–1.0. Each step sits exactly at the published cache size.</li>
+      <li><b>The CPU clock</b> (new test): 5.02 GHz with one core busy, 4.89 with all 8; it held at 4.96–5.06 GHz through a full run.</li>
+      <li><b>A GPU round trip costs about 70 µs on Windows</b><sup>2</sup>: record 1.9, submit 12.4, launch 41–46, the GPU's own work 0.4, waking the waiting thread 25–28. The first trip after the machine sits idle costs about 250 µs, mostly a slower GPU launch.</li>
+      <li><b>Batch GPU work:</b> 256 dependent dispatches in one submit cost 0.85 µs each, against 41–48 µs with a submit each.</li>
+      <li><b>Waiting:</b> polling for 50 µs and then sleeping gives the fastest trip (44 µs) at almost no CPU cost; pure polling burns a core for the whole job.</li>
+      <li><b>Threads on Windows:</b> starting one costs 92–98 µs (Linux 9), 60 with a 1 MiB stack; a warm pool hands work over in 0.12–0.49 µs. One thread reads L1 at 633 GB/s (generation 1: 334). RAM latency 92 ns. Fresh memory: 11 GB/s first write, 21 rewrite.</li>
+      <li><b>Every crossover verdict is the same as in generation 1:</b> networks on the GPU from 64, trees from 4K rows, chains from 64K, streaming math only when the data already lives on the GPU, one long chain never. Margins at the largest sizes: networks 4.2× with transfers (46× resident), trees 2.7×, chains 10.8×.</li>
+      <li><b>Opting out of Windows power throttling changed nothing</b> on this desktop (3 runs each way).</li>
+    </ul>
+  </div>
+</section>
+
+<section class="tier-sec">
+  <div class="find">
+    <div class="eyebrow">Every measurement</div>
+    <h2>Raw table</h2>
+    <p>All rows of <code>docs/data/strata.csv</code> (generation 1). GPU rows also carry the driver's register, spill and occupancy counts. Generation 2's charts read <code>docs/data/strata-gen2.csv</code>: medians from Windows runs 23–26 and, for GPU read bandwidth, the 4 runs of the corrected test.</p>
+  </div>
+  <details><summary>Show all rows</summary><div class="tbl"><table id="raw"></table></div></details>
+</section>
+
+<div class="foot">
+  <p>Source: <code>zstrata</code> (local repository). Run: <code>zig build run -Doptimize=ReleaseFast -- all</code>. Repeated over 4 full runs: every crossover verdict came out the same each time, and throughput numbers agree within 2%. Wake-up and round-trip times vary more (up to ~40%), since the desktop shares the machine.</p>
+  <p id="notes"><b>Notes.</b></p>
+  <p><sup>1</sup> Generation-1 GPU cache bandwidth is overstated 2–5×. That test launched more workgroups than the GPU holds at once, so they ran in two batches that each read part of the data, and it read a buffer of zeros, which the GPU's memory compression serves faster than real data. Generation 2 corrects both (commit 63b068b). The GPU latency figures came from a different test and still stand.</p>
+  <p><sup>2</sup> Round trips depend on the operating system and driver: 34–37 µs is Linux with RADV (generation 1); Windows with AMD's driver measured 44–75 µs (generation 2), and the launch step varied between runs.</p>
+</div>
+</div>
+
+<script>
+const CSV = `__CSV__`;
+const CSV2 = `__CSV2__`; // generation 2 (Windows, 2026-11-08/09): docs/data/strata-gen2.csv
+const parseCsv = text => {
+  const [head, ...lines] = text.trim().split("\n");
+  const keys = head.split(",");
+  return lines.map(l => { const v = l.split(","); const o = {}; keys.forEach((k, i) => { const n = Number(v[i]); o[k] = v[i] === "" ? null : (isNaN(n) ? v[i] : n); }); return o; });
+};
+const rows = parseCsv(CSV);
+const rows2 = parseCsv(CSV2);
+const sel = (device, probe, variant) => rows.filter(r => r.device === device && r.probe === probe && (variant == null || r.variant === variant));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 1) => v == null ? "–" : (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(d) : v.toPrecision(2));
+__CHARTS__
+
+const sizeFmt = v => v >= 1 << 30 ? (v / (1 << 30)) + "G" : v >= 1 << 20 ? (v / (1 << 20)) + "M" : v >= 1024 ? (v / 1024) + "K" : String(v);
+// Sizes that are powers of two read best in binary units (64K, 16M); round decimal ones in
+// decimal units (10K, 10M).
+const countFmt = v => {
+  if (v >= 1 << 20 && v % (1 << 20) === 0) return (v / (1 << 20)) + "M";
+  if (v >= 1024 && v % 1024 === 0) return (v / 1024) + "K";
+  return v >= 1e6 ? (v / 1e6) + "M" : v >= 1e3 ? (v / 1e3) + "K" : String(v);
+};
+const usFmt = v => v >= 1000 ? (v / 1000).toPrecision(3) + " ms" : v.toPrecision(3) + " µs";
+
+const TASKS = [
+  ["map", "Simple per-item math (y = a·x + b)", "floats", "c-map"],
+  ["nets", "Neural networks, 64 wide, 4 layers", "networks", "c-nets"],
+  ["trees", "Decision-tree ensemble (branchy)", "rows", "c-trees"],
+  ["chains", "Many independent step-by-step chains", "chains", "c-chains"],
+  ["chain-long", "One long chain of dependent steps", "steps", "c-chain-long"],
+];
+
+/* Verdict table, computed from the rows. */
+(() => {
+  const t = document.getElementById("verdict-table");
+  const head = document.createElement("tr");
+  for (const h of ["Task", "Kind of work", "GPU wins from (with transfer)", "GPU wins from (data resident)", "Biggest size: best and margin"]) { const th = document.createElement("th"); th.textContent = h; head.appendChild(th); }
+  t.appendChild(head);
+  for (const [task, what, unit] of TASKS) {
+    const xs = [...new Set(sel("cross", task).map(r => r.x))].sort((a, b) => a - b);
+    const v = (x, k) => (sel("cross", task, k).find(r => r.x === x) || {}).value;
+    const cpuBest = x => Math.min(...["cpu-1", "cpu-all"].map(k => v(x, k)).filter(n => n != null));
+    const from = k => { let f = null; for (let i = xs.length - 1; i >= 0; i--) { if (v(xs[i], k) < cpuBest(xs[i])) f = xs[i]; else break; } return f; };
+    const last = xs[xs.length - 1];
+    const opts = ["cpu-1", "cpu-all", "gpu-with-transfer"].filter(k => v(last, k) != null).map(k => [k, v(last, k)]).sort((a, b) => a[1] - b[1]);
+    const tr = document.createElement("tr");
+    const cell = (content) => { const td = document.createElement("td"); if (typeof content === "string") td.textContent = content; else td.appendChild(content); tr.appendChild(td); };
+    const chip = (text, cls) => { const s = document.createElement("span"); s.className = "chip " + cls; s.textContent = text; return s; };
+    cell(task); cell(what);
+    const ft = from("gpu-with-transfer"), fr = from("gpu-resident");
+    cell(ft == null ? chip("never: CPU", "cpu") : chip(countFmt(ft) + " " + unit, "gpu"));
+    cell(fr == null ? chip("never: CPU", "cpu") : chip(countFmt(fr) + " " + unit, "gpu"));
+    const best = opts[0], second = opts[1];
+    cell(best[0] + ", " + (second[1] / best[1]).toFixed(1) + "× ahead of " + second[0] + " (" + countFmt(last) + " " + unit + ")");
+    t.appendChild(tr);
+  }
+})();
+
+function drawCharts() {
+  const S = n => css(n);
+  const pts = (d, p, v, f = r => [r.x, r.value]) => sel(d, p, v).map(f);
+
+  lineChart(document.getElementById("c-lat"), "Latency of one read by working-set size", "ns per dependent read, random order · log scales", [
+    { name: "CPU, one core", color: S("--s2"), pts: pts("cpu", "chase", "latency") },
+    { name: "GPU, vector loads", color: S("--s1"), pts: pts("gpu", "chase", "vector") },
+  ], { xlog: true, ylog: true, ymin: 0.7, ymax: 400, yTicks: [1, 3, 10, 30, 100, 300], xTicks: [4096, 65536, 1048576, 16777216, 268435456], xFmt: sizeFmt, xName: "working set", xLabel: "working set (log)", unit: "ns", h: 280 });
+  lineChart(document.getElementById("c-bw"), "Read bandwidth by working-set size", "GB/s · log scales", [
+    { name: "CPU, one thread", color: S("--s2"), pts: pts("cpu", "stream", "read-1-thread") },
+    { name: "CPU, all threads", color: S("--s4"), pts: pts("cpu", "stream", "read-all-threads") },
+    { name: "GPU (cache rows overstated, note 1)", color: S("--s1"), pts: pts("gpu", "stream", "read-vec4") },
+  ], { xlog: true, ylog: true, ymin: 40, ymax: 40000, yTicks: [50, 200, 1000, 5000, 20000], yFmt: v => v >= 1000 ? (v / 1000) + "K" : v, xTicks: [4096, 65536, 1048576, 16777216, 268435456], xFmt: sizeFmt, xName: "working set", xLabel: "working set (log)", unit: "GB/s", vFmt: v => v.toFixed(0), h: 280 });
+
+  const maxOf = (d, p, v) => Math.max(...sel(d, p, v).map(r => r.value));
+  const coop = n => sel("gpu", "coop", n)[0]?.value;
+  barChart(document.getElementById("c-peaks"), "Peak arithmetic by level", "TFLOP/s (int8: TOP/s), log scale", [
+    { name: "1 core, scalar", v: maxOf("cpu", "alu", "scalar"), color: S("--s2") },
+    { name: "1 core, AVX-512", v: maxOf("cpu", "alu", "avx512-16"), color: S("--s2") },
+    { name: "8 cores, AVX-512", v: maxOf("cpu", "alu", "threads-avx512"), color: S("--s2") },
+    { name: "GPU fp32", v: maxOf("gpu", "alu", "fp32-wave64"), color: S("--s1") },
+    { name: "GPU fp16 matrix", v: coop("fp16-fp32acc"), color: S("--s1") },
+    { name: "GPU fp8 matrix", v: coop("fp8e4m3-fp32acc"), color: S("--s1") },
+    { name: "GPU int8 matrix", v: coop("int8-int32acc"), color: S("--s1") },
+  ], { ml: 130, log: true, min: 0.01, max: 1000, ticks: [0.01, 0.1, 1, 10, 100, 1000], tFmt: v => String(v), unit: "T/s", vFmt: v => v >= 10 ? v.toFixed(0) : v.toPrecision(2) });
+
+  const crossSeries = task => [
+    { name: "cpu-1", color: S("--s2"), pts: pts("cross", task, "cpu-1") },
+    { name: "cpu-all", color: S("--s4"), pts: pts("cross", task, "cpu-all") },
+    { name: "gpu-kernel", color: S("--s3"), pts: pts("cross", task, "gpu-kernel"), dash: true },
+    { name: "gpu-resident", color: S("--s5"), pts: pts("cross", task, "gpu-resident") },
+    { name: "gpu-with-transfer", color: S("--s1"), pts: pts("cross", task, "gpu-with-transfer") },
+  ].filter(s => s.pts.length);
+  for (const [task, what, unit, id] of TASKS) {
+    const all = sel("cross", task).map(r => r.value);
+    const lo = Math.pow(10, Math.floor(Math.log10(Math.max(0.01, Math.min(...all))))), hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...all))));
+    const yt = []; for (let v = lo; v <= hi; v *= 10) yt.push(v);
+    const xs = [...new Set(sel("cross", task).map(r => r.x))].sort((a, b) => a - b);
+    lineChart(document.getElementById(id), task + ": " + what, "µs per run by " + unit + " · log scales", crossSeries(task),
+      { xlog: true, ylog: true, ymin: lo, ymax: hi, yTicks: yt, yFmt: v => v >= 1000 ? (v / 1000) + "ms" : v + "µs", xTicks: xs.filter((_, i) => xs.length < 8 || i % 2 === 0), xFmt: countFmt, xName: unit, xLabel: unit + " (log)", vFmt: usFmt, h: 270 });
+  }
+
+  lineChart(document.getElementById("c-cpu-alu"), "One core: speed by vector width and independent chains", "TFLOP/s · AVX-512 has 32 vector registers", [
+    { name: "scalar", color: S("--s1"), pts: pts("cpu", "alu", "scalar") },
+    { name: "SSE, 4 wide", color: S("--s2"), pts: pts("cpu", "alu", "sse-4") },
+    { name: "AVX2, 8 wide", color: S("--s3"), pts: pts("cpu", "alu", "avx2-8") },
+    { name: "AVX-512, 16 wide", color: S("--s4"), pts: pts("cpu", "alu", "avx512-16") },
+  ], { xlog: true, xTicks: [1, 2, 4, 8, 16, 32, 64], xName: "chains", xLabel: "independent chains (log)", unit: "TFLOP/s", vFmt: v => v.toFixed(3), h: 260, marks: [{ x: 28, label: "registers full", left: true, color: "--hot" }] });
+  lineChart(document.getElementById("c-cpu-threads"), "All cores: speed by threads", "TFLOP/s · threads 1–8 get a core each, 9–16 share", [
+    { name: "AVX2", color: S("--s3"), pts: pts("cpu", "alu", "threads-avx2") },
+    { name: "AVX-512", color: S("--s4"), pts: pts("cpu", "alu", "threads-avx512") },
+  ], { xTicks: [1, 2, 4, 8, 12, 16], xName: "threads", xLabel: "threads", unit: "TFLOP/s", vFmt: v => v.toFixed(2), h: 260, marks: [{ x: 8, label: "one per core", color: "--muted" }] });
+  barChart(document.getElementById("c-cpu-branch"), "Cost per item of a branch", "ns per item, 64 KiB of bytes in L2",
+    sel("cpu", "branch").map(r => ({ name: r.variant, v: r.value, color: r.variant === "random" ? S("--s2") : S("--s1") })), { ml: 100, unit: "ns", vFmt: v => v.toFixed(2) });
+  barChart(document.getElementById("c-cpu-sync"), "Cost of handing work to threads", "µs per hand-off, log scale",
+    sel("cpu", "sync").map(r => ({ name: r.variant === "spawn-join" ? "new thread" : (r.variant === "pool-hot" ? "warm pool, " : "sleeping pool, ") + (r.variant === "spawn-join" ? "" : r.x + " thr"), v: r.value, color: r.variant === "pool-hot" ? S("--s1") : S("--s2") })),
+    { ml: 140, log: true, min: 0.1, max: 100, ticks: [0.1, 1, 10, 100], tFmt: v => String(v), unit: "µs", vFmt: v => v.toPrecision(2) });
+
+  lineChart(document.getElementById("c-link"), "Moving data across the link", "GB/s by transfer size · log scales", [
+    { name: "upload, CPU writes VRAM directly", color: S("--s1"), pts: pts("link", "upload", "direct-write") },
+    { name: "upload, staged", color: S("--s3"), pts: pts("link", "upload", "staged") },
+    { name: "download, GPU copies back", color: S("--s2"), pts: pts("link", "download", "staged") },
+    { name: "download, CPU reads VRAM", color: S("--s4"), pts: pts("link", "download", "direct-read") },
+  ], { xlog: true, ylog: true, ymin: 0.02, ymax: 100, yTicks: [0.03, 0.1, 0.3, 1, 3, 10, 30, 100], xTicks: [4096, 65536, 1048576, 16777216, 268435456], xFmt: sizeFmt, xName: "size", xLabel: "transfer size (log)", unit: "GB/s", vFmt: v => v.toPrecision(3), h: 300 });
+
+  lineChart(document.getElementById("c-gpu-mlp"), "GPU networks by width and where the weights live", "TFLOP/s · dashed: several networks packed per subgroup", [
+    { name: "registers", color: S("--s1"), pts: pts("gpu", "mlp", "reg-one") },
+    { name: "registers, packed", color: S("--s1"), pts: pts("gpu", "mlp", "reg-packed"), dash: true },
+    { name: "shared memory", color: S("--s2"), pts: pts("gpu", "mlp", "lds-one") },
+    { name: "buffer (caches)", color: S("--s3"), pts: pts("gpu", "mlp", "mem-one") },
+  ], { xlog: true, xTicks: [8, 16, 32, 64, 128, 256], xName: "width", xLabel: "network width (log)", unit: "TFLOP/s", ymax: 13, h: 280 });
+
+  // Generation 2: its own rows, never mixed with generation 1's.
+  const pts2 = (d, p, v, y) => rows2.filter(r => r.device === d && r.probe === p && r.variant === v && (y == null || r.y === y)).map(r => [r.x, r.value]);
+  lineChart(document.getElementById("c2-lat"), "Latency of one read, generation 2", "ns per dependent read, random order · log scales · Windows", [
+    { name: "CPU, one core", color: S("--s2"), pts: pts2("cpu", "chase", "latency") },
+    { name: "GPU, vector loads", color: S("--s1"), pts: pts2("gpu", "chase", "vector") },
+  ], { xlog: true, ylog: true, ymin: 0.7, ymax: 400, yTicks: [1, 3, 10, 30, 100, 300], xTicks: [4096, 65536, 1048576, 16777216, 268435456], xFmt: sizeFmt, xName: "working set", xLabel: "working set (log)", unit: "ns", h: 280 });
+  lineChart(document.getElementById("c2-bw"), "Read bandwidth, generation 2", "GB/s · log scales · GPU: corrected test, 256 workgroups", [
+    { name: "CPU, one thread", color: S("--s2"), pts: pts2("cpu", "stream", "read-1-thread") },
+    { name: "CPU, all threads", color: S("--s4"), pts: pts2("cpu", "stream", "read-all-threads") },
+    { name: "GPU", color: S("--s1"), pts: pts2("gpu", "stream", "sweep", 256) },
+  ], { xlog: true, ylog: true, ymin: 40, ymax: 40000, yTicks: [50, 200, 1000, 5000, 20000], yFmt: v => v >= 1000 ? (v / 1000) + "K" : v, xTicks: [4096, 65536, 1048576, 16777216, 268435456], xFmt: sizeFmt, xName: "working set", xLabel: "working set (log)", unit: "GB/s", vFmt: v => v.toFixed(0), h: 280 });
+}
+drawCharts();
+
+function redraw() { document.querySelectorAll(".chart").forEach(c => c.remove()); drawCharts(); }
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+let lastW = document.querySelector(".wrap").clientWidth;
+addEventListener("resize", () => { const w = document.querySelector(".wrap").clientWidth; if (Math.abs(w - lastW) < 40) return; lastW = w; redraw(); });
+
+(() => {
+  const t = document.getElementById("raw");
+  const keys = Object.keys(rows[0]);
+  const hr = document.createElement("tr"); for (const k of keys) { const th = document.createElement("th"); th.textContent = k; hr.appendChild(th); } t.appendChild(hr);
+  for (const r of rows) { const tr = document.createElement("tr"); for (const k of keys) { const td = document.createElement("td"); td.textContent = r[k] == null ? "" : String(r[k]); tr.appendChild(td); } t.appendChild(tr); }
+})();
+</script>

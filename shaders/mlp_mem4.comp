@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Weights read from the buffer on every use, as vec4: see mlp.glsl.
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define PLACE_MEM
+#define MEM_VEC4
+#include "mlp.glsl"

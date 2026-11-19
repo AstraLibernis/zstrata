@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Shared-memory bandwidth: every lane reads 32 KiB of shared memory at index
+// (lane * stride + step). Stride 1 puts neighbouring lanes in neighbouring banks; strides that
+// land many lanes in the same bank make the reads queue up (bank conflicts).
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Push { uint iters; uint stride; } pc;
+layout(set = 0, binding = 0) writeonly buffer Out { float o[]; };
+const uint N = 8192; // floats, 32 KiB
+shared float lds[N];
+
+void main() {
+    uint t = gl_LocalInvocationID.x;
+    for (uint i = t; i < N; i += 256) lds[i] = float(i);
+    barrier();
+    float acc = 0.0;
+    uint base = t * pc.stride;
+    for (uint it = 0; it < pc.iters; it++) {
+        [[unroll]] for (uint u = 0; u < 16; u++) acc += lds[(base + it * 16 + u) & (N - 1)];
+    }
+    o[gl_GlobalInvocationID.x] = acc;
+}

@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Packed fp16 version of fma.glsl: each value is a pair of halves, 4 FLOPs per fma per lane.
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#define T f16vec2
+#define SUM(x) float((x).x + (x).y)
+#include "fma.glsl"

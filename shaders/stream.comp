@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Read bandwidth by working-set size. The working set (nblocks blocks of 4 KiB, any count) is
+// read as one strict sweep: at each step workgroup g reads block g + step * groups (wrapping),
+// neighbouring lanes reading neighbouring 16 bytes, so the grid reads a window of `groups`
+// consecutive blocks per step and a block is read again only after the whole working set has
+// been read. That holds only while every workgroup is on the GPU at once: the host keeps the
+// grid small enough. A larger grid runs in batches, each batch touching only part of the
+// working set, and every cache level then looks twice as big (measured: 1024 workgroups on
+// the RX 9070 XT, docs/measurements.md).
+#version 450
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Push { uint nblocks; uint iters; } pc;
+layout(set = 0, binding = 0) readonly buffer In { vec4 v[]; };
+layout(set = 0, binding = 1) writeonly buffer Out { float o[]; };
+
+void main() {
+    uint jump = gl_NumWorkGroups.x % pc.nblocks;
+    uint b = gl_WorkGroupID.x % pc.nblocks;
+    uint l = gl_LocalInvocationID.x;
+    vec4 acc = vec4(0.0);
+    for (uint it = 0; it < pc.iters; it++) {
+        acc += v[b * 256u + l];
+        b += jump;
+        if (b >= pc.nblocks) b -= pc.nblocks;
+    }
+    o[gl_GlobalInvocationID.x] = acc.x + acc.y + acc.z + acc.w;
+}

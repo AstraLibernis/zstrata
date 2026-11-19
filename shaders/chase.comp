@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// Latency by working-set size: a chain of indices through the buffer, each read depending on
+// the one before, so nothing overlaps. Time per step = load latency. VECTOR = 0: the index is
+// the same for the whole subgroup and the compiler uses scalar loads (their own small cache);
+// VECTOR = 1: the index comes from a per-lane value (pc.mul * lane, 0 at run time), so the
+// compiler must use the vector loads that ordinary per-lane data goes through. All lanes
+// follow the same chain, so each step is one memory request either way. Each run starts at a
+// random point of the cycle (pc.start): repeated runs from the same start would re-walk the
+// same lines, and those would come from a cache instead of VRAM.
+#version 450
+layout(local_size_x = 64) in;
+layout(constant_id = 0) const uint VECTOR = 0;
+layout(push_constant) uniform Push { uint iters; uint mul; uint start; } pc;
+layout(set = 0, binding = 0) readonly buffer Ring { uint next[]; };
+layout(set = 0, binding = 1) writeonly buffer Out { uint o[]; };
+
+void main() {
+    uint p = VECTOR != 0 ? pc.start + pc.mul * gl_LocalInvocationID.x : pc.start;
+    for (uint s = 0; s < pc.iters; s++) p = next[p];
+    o[gl_LocalInvocationID.x] = p;
+}
