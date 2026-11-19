@@ -23,6 +23,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const gpu = @import("../gpu.zig");
 const report = @import("../report.zig");
+const cpu_host = @import("../cpu/host.zig");
 const vk = gpu.vk;
 
 const spv = struct {
@@ -524,7 +525,7 @@ fn cpuNetwork(gpa: std.mem.Allocator, wt: []const f32, w: u32, inputs: u32) !f32
         for (0..mlp_layers) |_| {
             for (y, 0..) |*v, row| {
                 var acc: f32 = 0;
-                for (0..w) |k| acc = @mulAdd(f32, wt[row * w + k], x[k], acc);
+                for (0..w) |k| acc = cpu_host.mulAdd(f32, wt[row * w + k], x[k], acc);
                 v.* = std.math.tanh(acc);
             }
             @memcpy(x, y);

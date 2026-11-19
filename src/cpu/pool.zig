@@ -108,8 +108,22 @@ pub const Pool = struct {
         return p.threads.len + 1;
     }
 
+    /// The size of the pieces `parallelFor(total, .., min_chunk)` hands out, or `total` when it
+    /// would run the whole range in one call. Every piece begins at a multiple of this and all
+    /// but the last have this length, so a task can use `begin / chunkFor(..)` as the piece's
+    /// index (for per-piece scratch or results reduced in piece order), and
+    /// `(total + chunk - 1) / chunk` is how many pieces there are. Zero for `total == 0`.
+    pub fn chunkFor(p: *const Pool, total: usize, min_chunk: usize) usize {
+        const workers = p.workerCount();
+        if (workers == 1 or total <= min_chunk) return total;
+        // Several chunks per worker so a slow core cannot hold the barrier; few enough that the
+        // cursor is not the bottleneck.
+        const chunk = (total + workers * 4 - 1) / (workers * 4);
+        return @max(chunk, min_chunk);
+    }
+
     /// Run `task` over `[0, total)`. At or under `min_chunk` it runs inline (the barrier would
-    /// cost more).
+    /// cost more). The pieces are the ones `chunkFor` describes.
     pub fn parallelFor(p: *Pool, total: usize, ctx: *anyopaque, task: TaskFn, min_chunk: usize) void {
         if (total == 0) return;
         const workers = p.workerCount();
@@ -117,10 +131,7 @@ pub const Pool = struct {
             task(ctx, 0, 0, total);
             return;
         }
-        // Several chunks per worker so a slow core cannot hold the barrier; few enough that the
-        // cursor is not the bottleneck.
-        var chunk = (total + workers * 4 - 1) / (workers * 4);
-        if (chunk < min_chunk) chunk = min_chunk;
+        const chunk = p.chunkFor(total, min_chunk);
 
         p.task = task;
         p.ctx = ctx;
@@ -208,6 +219,43 @@ test "cpu pool covers every index exactly once, round after round (1, 3, 16 thre
         var ctx: Count = .{ .vals = vals };
         for (0..50) |_| pool.parallelFor(vals.len, &ctx, Count.run, 1);
         for (vals) |v| try testing.expectEqual(@as(u32, 50), v);
+    }
+}
+
+const Pieces = struct {
+    chunk: usize,
+    total: usize,
+    /// How many times each piece index was handed out.
+    seen: []std.atomic.Value(u32),
+    bad: std.atomic.Value(u32) = .init(0),
+    fn run(ctx: *anyopaque, _: usize, begin: usize, end: usize) void {
+        const self: *Pieces = @ptrCast(@alignCast(ctx));
+        const full = end - begin == self.chunk;
+        const last = end == self.total and end - begin <= self.chunk;
+        if (begin % self.chunk != 0 or !(full or last)) _ = self.bad.fetchAdd(1, .monotonic);
+        _ = self.seen[begin / self.chunk].fetchAdd(1, .monotonic);
+    }
+};
+
+test "cpu pool chunkFor describes the pieces parallelFor hands out (1, 3, 16 threads)" {
+    const gpa = testing.allocator;
+    for ([_]u32{ 1, 3, 16 }) |threads| {
+        const pool = try Pool.init(gpa, threads);
+        defer pool.deinit();
+        try testing.expectEqual(@as(usize, 0), pool.chunkFor(0, 1));
+        for ([_]usize{ 1, 7, 64, 65, 1000, 100_003 }) |total| {
+            for ([_]usize{ 1, 7, 64, 5000 }) |min_chunk| {
+                const chunk = pool.chunkFor(total, min_chunk);
+                const pieces = (total + chunk - 1) / chunk;
+                const seen = try gpa.alloc(std.atomic.Value(u32), pieces);
+                defer gpa.free(seen);
+                for (seen) |*s| s.* = .init(0);
+                var ctx: Pieces = .{ .chunk = chunk, .total = total, .seen = seen };
+                pool.parallelFor(total, &ctx, Pieces.run, min_chunk);
+                try testing.expectEqual(@as(u32, 0), ctx.bad.load(.monotonic));
+                for (seen) |*s| try testing.expectEqual(@as(u32, 1), s.load(.monotonic));
+            }
+        }
     }
 }
 

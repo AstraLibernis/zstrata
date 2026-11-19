@@ -24,6 +24,7 @@ const gpu = @import("../gpu.zig");
 const vk = gpu.vk;
 const report = @import("../report.zig");
 const clock = @import("../cpu/probes.zig");
+const cpu_host = @import("../cpu/host.zig");
 const gpu_probes = @import("../gpu/probes.zig");
 const Lab = gpu_probes.Lab;
 const Pool = @import("../cpu/pool.zig").Pool;
@@ -152,8 +153,8 @@ fn mapRange(ctx: *const MapCtx, begin: usize, end: usize) void {
     const a: V = @splat(map_a);
     const b: V = @splat(map_b);
     var i = begin;
-    while (i + 16 <= end) : (i += 16) ctx.y[i..][0..16].* = @mulAdd(V, a, ctx.x[i..][0..16].*, b);
-    while (i < end) : (i += 1) ctx.y[i] = @mulAdd(f32, map_a, ctx.x[i], map_b);
+    while (i + 16 <= end) : (i += 16) ctx.y[i..][0..16].* = cpu_host.mulAdd(V, a, ctx.x[i..][0..16].*, b);
+    while (i < end) : (i += 1) ctx.y[i] = cpu_host.mulAdd(f32, map_a, ctx.x[i], map_b);
 }
 
 fn mapTask(c: *anyopaque, _: usize, begin: usize, end: usize) void {
@@ -467,7 +468,7 @@ fn netForward(w: []const f32) f32 {
         for (0..net_layers) |_| {
             for (0..net_w) |r| {
                 var acc: V = @splat(0);
-                inline for (0..net_w / 16) |q| acc = @mulAdd(V, w[r * net_w + q * 16 ..][0..16].*, x[q * 16 ..][0..16].*, acc);
+                inline for (0..net_w / 16) |q| acc = cpu_host.mulAdd(V, w[r * net_w + q * 16 ..][0..16].*, x[q * 16 ..][0..16].*, acc);
                 y[r] = std.math.tanh(@reduce(.Add, acc));
             }
             x = y;

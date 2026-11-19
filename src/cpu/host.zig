@@ -11,6 +11,17 @@ const report = @import("../report.zig");
 
 const is_windows = builtin.os.tag == .windows;
 
+/// Whether the CPU this build targets has a fused multiply-add instruction. Without one,
+/// `@mulAdd` still gives the right answer, but through a library routine per value (measured
+/// 20x to 35x slower than a separate multiply and add), which would understate the machine.
+pub const fused_is_an_instruction = builtin.cpu.has(.x86, .fma) or builtin.cpu.arch.isAARCH64();
+
+/// `a * b + c`: fused where the CPU has the instruction, a separate multiply and add where it
+/// does not. `T` is a float or a vector of floats.
+pub inline fn mulAdd(comptime T: type, a: T, b: T, c: T) T {
+    return if (fused_is_an_instruction) @mulAdd(T, a, b, c) else a * b + c;
+}
+
 /// Monotonic nanoseconds. Windows: QueryPerformanceCounter, whose tick is reported by
 /// QueryPerformanceFrequency (so its resolution can be coarser than 1 ns).
 pub fn nowNs() u64 {

@@ -127,7 +127,7 @@ fn fmaChains(comptime V: usize, comptime K: usize, n: u64, seed: f32) f32 {
     const b: Vec = @splat(0.001);
     var it: u64 = 0;
     while (it < n) : (it += 1) {
-        inline for (0..K) |i| acc[i] = @mulAdd(Vec, acc[i], a, b);
+        inline for (0..K) |i| acc[i] = host.mulAdd(Vec, acc[i], a, b);
     }
     var s: Vec = @splat(0);
     inline for (0..K) |i| s += acc[i];
