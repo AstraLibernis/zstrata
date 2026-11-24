@@ -76,4 +76,7 @@ compiler are needed. `zig build test-lib` runs the library's tests without a GPU
 ## Licence
 
 The measuring program is GPL-3.0-or-later (`COPYING`). The library files `src/lib.zig` and
-`src/lib/` are LGPL-3.0-or-later (`COPYING.LESSER`); each file's header says which applies.
+`src/lib/`, the Vulkan layer `src/gpu.zig`, the thread pool `src/cpu/pool.zig` and the two
+files the Vulkan layer imports (`src/cpu/host.zig`, `src/report.zig`) are LGPL-3.0-or-later
+(`COPYING.LESSER`), so other libraries can build on them; each file's header says which
+applies.
