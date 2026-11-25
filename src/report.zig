@@ -6,6 +6,7 @@
 //! those columns empty.
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 /// What the GPU driver says it compiled (null on the CPU, or when the driver has no such
 /// statistic): registers and spills per lane, scratch memory, shared memory per workgroup,
@@ -37,8 +38,10 @@ pub const Row = struct {
 pub const header = "device,probe,variant,x,y,value,unit,ms,vgprs,sgprs,spilled_vgprs,scratch_bytes,lds_bytes,subgroups_per_simd,vopd,smem\n";
 
 /// Progress lines on stderr. Off in tests: the test runner counts any stderr output as a
-/// failure.
-pub var progress = true;
+/// failure. Off by default in any test build, so projects that use this library (whose
+/// tests cannot reach this variable) do not get the Vulkan loader's notes on every passing
+/// test run (found in zneuro).
+pub var progress = !builtin.is_test;
 
 pub fn note(comptime fmt: []const u8, args: anytype) void {
     if (progress) std.debug.print(fmt, args);
