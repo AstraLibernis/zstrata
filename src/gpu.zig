@@ -55,6 +55,13 @@ const WinLoader = struct {
 /// Validation warnings and errors seen since start. Experiments assert this stays 0.
 pub var validation_messages: std.atomic.Value(u32) = .init(0);
 
+/// Print the Vulkan loader's notes about the host's layer setup (Debug builds only,
+/// where the messenger is on). Off by default: on the sandbox host they are Steam layer
+/// files this account may not read, a registry key it may not read, and a duplicate AMD
+/// layer from an older driver, none of which this program can change, and every Debug run
+/// printed them as "vulkan loader error". Turn on to diagnose a device that will not open.
+pub var show_loader_notes = false;
+
 pub const Options = struct {
     /// Validation layer and debug messenger. Defaults to on in Debug, off in release builds,
     /// because the layer slows every call down.
@@ -107,8 +114,12 @@ pub const Context = struct {
         const vkb = vk.BaseWrapper.load(get_proc);
 
         const validation = opts.validation and try hasLayer(gpa, vkb, validation_layer);
-        if (opts.validation and !validation)
-            std.log.warn("validation layer not found; source shared/env.sh", .{});
+        if (opts.validation and !validation) std.log.warn("validation layer not found; {s}", .{
+            if (builtin.os.tag == .windows)
+                "set VK_ADD_LAYER_PATH to the folder holding VkLayer_khronos_validation.json (the build's run and test steps use %USERPROFILE%\\.local\\vk-layers)"
+            else
+                "source shared/env.sh",
+        });
 
         const layers: []const [*:0]const u8 = if (validation) &.{validation_layer} else &.{};
         const exts: []const [*:0]const u8 = if (validation)
@@ -947,11 +958,11 @@ fn debugCallback(
     const msg = if (data) |d| d.p_message orelse "(no message)" else "(no data)";
     // The loader reports the host's layer setup (on Windows: stale registry entries from other
     // apps, duplicate driver manifests, layer files this account may not read) under this id.
-    // Not a fault of this program: shown as progress (quiet in tests, whose runner fails on any
-    // stderr output), not counted.
+    // Not a fault of this program, so not counted, and shown only when asked
+    // (`show_loader_notes`; never in tests, whose runner fails on any stderr output).
     const id: []const u8 = if (data) |d| if (d.p_message_id_name) |n| std.mem.span(n) else "" else "";
     if (std.mem.eql(u8, id, "Loader Message")) {
-        report.note("vulkan loader {s}: {s}\n", .{ level, msg });
+        if (show_loader_notes) report.note("vulkan loader {s}: {s}\n", .{ level, msg });
         return .false;
     }
     std.debug.print("vulkan {s}: {s}\n", .{ level, msg });
