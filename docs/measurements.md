@@ -248,8 +248,10 @@ unless tagged]
   flagged clean. L1 0.985-0.992 ns, RAM 94.9-97.3 ns, FMA 2.44-2.55 TFLOP/s.
 - `zig build test` broke on this machine between 12:40 and 17:40 without a code change: this
   account lost read access to `C:\Program Files (x86)\Steam`, and the Vulkan loader logs an
-  error for Steam's registered layers. Loader messages now go to progress output (quiet in
-  tests) instead of stderr; they were never counted as validation messages.
+  error for Steam's registered layers. Loader messages went to progress output (quiet in
+  tests) instead of stderr; they were never counted as validation messages. Since 0.2.0
+  (2026-11-25) they are dropped unless `gpu.show_loader_notes` is set, and progress output
+  is off in every test build, so projects using the Vulkan layer stay quiet too.
 
 ## What a portable build costs (2026-11-08 evening)
 

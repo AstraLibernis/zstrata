@@ -52,6 +52,11 @@ Runs on Linux and Windows from the same source; OS-specific calls sit behind
   `%USERPROFILE%\.local\shaderc\bin` (`VKPREFIX` overrides); the tests need the Khronos
   validation layer at `%USERPROFILE%\.local\vk-layers` (`VKLAYERS` overrides). Both are
   per-user downloads (shaderc's CI build, the validation layers' `nightly` release).
+  `zig build test` points `VK_ADD_LAYER_PATH` at that folder; running a Debug
+  `zig-out\bin\zstrata.exe` directly needs `VK_ADD_LAYER_PATH` set to it.
+- **A GPU that will not open:** set `gpu.show_loader_notes = true` in a Debug build to print
+  the Vulkan loader's notes about the host's layer setup (dropped by default: on a normal
+  machine they are noise such as unreadable or duplicate layer manifests).
 
 `src/gpu.zig` and the GPU probe shaders come from an earlier Vulkan lab project by the same author.
 
@@ -80,3 +85,14 @@ The measuring program is GPL-3.0-or-later (`COPYING`). The library files `src/li
 files the Vulkan layer imports (`src/cpu/host.zig`, `src/report.zig`) are LGPL-3.0-or-later
 (`COPYING.LESSER`), so other libraries can build on them; each file's header says which
 applies.
+
+Projects that use the Vulkan layer (`src/gpu.zig`, as zneuro does) can set: `Options.validation`
+(default on in Debug), `gpu.show_loader_notes` (default off), and `report.progress` (default
+off in test builds); `gpu.validation_messages` counts validation warnings and errors.
+
+## Versions
+
+- **0.2.0** (2026-11-25): `report.progress` defaults to off in any test build; the Vulkan
+  loader's notes are dropped unless `gpu.show_loader_notes` is set; the missing-validation-layer
+  warning names `VK_ADD_LAYER_PATH` on Windows and `tools/env.sh` elsewhere.
+- **0.1.0** (2026-11-19): the hardware map plus the library module (`Pool`, `simd`, `sort`).

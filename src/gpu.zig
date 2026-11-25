@@ -3,6 +3,11 @@
 
 //! The setup every experiment repeats: load the Vulkan loader, create an instance (with the
 //! validation layer in Debug builds), pick a GPU, create a device with one compute queue.
+//!
+//! Switches a user can set: `Options.validation` (default: on in Debug); validation warnings
+//! and errors are printed and counted in `validation_messages`; the loader's own notes about
+//! the host's layer setup are dropped unless `show_loader_notes` is set (turn it on in a
+//! Debug build when a device will not open).
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -118,7 +123,7 @@ pub const Context = struct {
             if (builtin.os.tag == .windows)
                 "set VK_ADD_LAYER_PATH to the folder holding VkLayer_khronos_validation.json (the build's run and test steps use %USERPROFILE%\\.local\\vk-layers)"
             else
-                "source shared/env.sh",
+                "source tools/env.sh",
         });
 
         const layers: []const [*:0]const u8 = if (validation) &.{validation_layer} else &.{};

@@ -37,10 +37,9 @@ pub const Row = struct {
 
 pub const header = "device,probe,variant,x,y,value,unit,ms,vgprs,sgprs,spilled_vgprs,scratch_bytes,lds_bytes,subgroups_per_simd,vopd,smem\n";
 
-/// Progress lines on stderr. Off in tests: the test runner counts any stderr output as a
-/// failure. Off by default in any test build, so projects that use this library (whose
-/// tests cannot reach this variable) do not get the Vulkan loader's notes on every passing
-/// test run (found in zneuro).
+/// Progress lines on stderr; off by default in any test build (the test runner fails on any
+/// stderr output, and the tests of projects that use this library cannot reach this
+/// variable).
 pub var progress = !builtin.is_test;
 
 pub fn note(comptime fmt: []const u8, args: anytype) void {
