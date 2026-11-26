@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 AstraLibernis
+//
+// The keep-warm job (src/gpu/warm.zig): one lane doing a dependent integer chain, so the GPU
+// counts as busy and holds its clock. It runs `rounds` x 4096 steps; the CPU sets `rounds`
+// between jobs so one job lasts ~0.2 s. Long on purpose: every job boundary flushes the GPU's
+// caches, and with 8 ms jobs that slowed other work's cache-resident reads by up to 1.5x.
+// (A stop flag in the buffer does not work: the GPU keeps reading its cached copy of the word
+// for as long as the job runs, so a job cannot be told to end early.)
+#version 450
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0) buffer Ctl { uint rounds; uint done; uint x; };
+
+void main() {
+    uint v = 12345u;
+    uint n = rounds;
+    for (uint r = 0u; r < n; r++) {
+        for (uint s = 0u; s < 4096u; s++) v = v * 1664525u + 1013904223u;
+    }
+    done = n;
+    x = v;
+}

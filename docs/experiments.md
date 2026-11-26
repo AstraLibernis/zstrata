@@ -49,7 +49,7 @@ cannot be done with this setup.
 | C4 | ~~**Clock tracker**~~ **DONE 2026-11-09**: `cpu,clock` (one core busy, all cores busy) and a `cpu,check,clock` row at every checkpoint, from a chain of dependent one-cycle adds | separates "the code got slower" from "the CPU boosted lower" (the -2% Windows CPU gap) without needing admin counters |
 | C5 | **Randomised probe order and interleaving**: probes in a shuffled order each run, several short repeats instead of one long one | removes drift within a run (heat, boost, background tasks) from the comparisons |
 | C6 | **Defender's first-run cost**: time a fresh executable vs the same file run again | spot checks right after a rebuild read high; this would confirm the cause. An antivirus exclusion for the build folder would remove it **[gated]** |
-| C7 | **Linux numbers for the new rows** (`lds4`, `mem4`, `batch`, `wait`, `spawn-join-1mib`) | the Windows vs Linux comparison is incomplete without them **[blocked: no Linux with GPU access since WSL was removed]** |
+| C7 | ~~**Linux numbers for the new rows**~~ **DONE 2026-11-26** (runs 29-36, native Fedora) (`lds4`, `mem4`, `batch`, `wait`, `spawn-join-1mib`) | the Windows vs Linux comparison is incomplete without them **[blocked: no Linux with GPU access since WSL was removed]** |
 
 ## D. Numerical accuracy (how close a fast result is to the exact one)
 

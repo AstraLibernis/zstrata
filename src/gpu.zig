@@ -95,6 +95,11 @@ pub const Context = struct {
     device: vk.Device,
     queue: vk.Queue,
     queue_family: u32,
+    /// A queue on a second compute-capable family, when the driver has one (RADV: the
+    /// compute-only family, which the kernel runs on its own ring beside `queue`'s). Used by
+    /// `gpu/warm.zig`; null on drivers with a single compute family.
+    aux_queue: ?vk.Queue = null,
+    aux_family: u32 = 0,
     /// Bits a timestamp on the compute queue carries (64 on RDNA); fewer means it wraps.
     timestamp_bits: u32,
     optional_on: [max_optional][*:0]const u8 = undefined,
@@ -200,11 +205,16 @@ pub const Context = struct {
         @memcpy(dev_exts[0..opts.device_extensions.len], opts.device_extensions);
         @memcpy(dev_exts[opts.device_extensions.len..], optional_on[0..optional_len]);
         const priority = [_]f32{1.0};
-        const queue_info = [_]vk.DeviceQueueCreateInfo{.{
+        const queue_info = [_]vk.DeviceQueueCreateInfo{ .{
             .queue_family_index = queue_family,
             .queue_count = 1,
             .p_queue_priorities = &priority,
-        }};
+        }, .{
+            .queue_family_index = family.aux orelse 0,
+            .queue_count = 1,
+            .p_queue_priorities = &priority,
+        } };
+        const queue_count: u32 = if (family.aux != null) 2 else 1;
         // Synchronization2 (core in 1.3, but still opt-in): the barrier, submit and timestamp
         // calls with the clearer stage/access flags.
         var features13: vk.PhysicalDeviceVulkan13Features = .{
@@ -216,7 +226,7 @@ pub const Context = struct {
         };
         const device = try vki.createDevice(physical, &.{
             .p_next = &features13,
-            .queue_create_info_count = queue_info.len,
+            .queue_create_info_count = queue_count,
             .p_queue_create_infos = &queue_info,
             .enabled_extension_count = @intCast(dev_exts.len),
             .pp_enabled_extension_names = dev_exts.ptr,
@@ -236,6 +246,8 @@ pub const Context = struct {
             .device = device,
             .queue = vkd.getDeviceQueue(device, queue_family, 0),
             .queue_family = queue_family,
+            .aux_queue = if (family.aux) |a| vkd.getDeviceQueue(device, a, 0) else null,
+            .aux_family = family.aux orelse 0,
             .timestamp_bits = family.timestamp_bits,
             .optional_on = optional_on,
             .optional_len = optional_len,
@@ -942,13 +954,21 @@ fn pickDevice(vki: vk.InstanceWrapper, physicals: []const vk.PhysicalDevice, ind
     return physicals[0];
 }
 
-const Family = struct { index: u32, timestamp_bits: u32 };
+const Family = struct { index: u32, timestamp_bits: u32, aux: ?u32 = null };
 
 fn computeQueueFamily(gpa: std.mem.Allocator, vki: vk.InstanceWrapper, physical: vk.PhysicalDevice) !Family {
     const families = try vki.getPhysicalDeviceQueueFamilyPropertiesAlloc(physical, gpa);
     defer gpa.free(families);
     for (families, 0..) |f, i| {
-        if (f.queue_flags.compute) return .{ .index = @intCast(i), .timestamp_bits = f.timestamp_valid_bits };
+        if (!f.queue_flags.compute) continue;
+        // A second family that computes, preferring one without graphics (a ring of its own).
+        var aux: ?u32 = null;
+        for (families, 0..) |g, j| {
+            if (j == i or !g.queue_flags.compute or g.queue_count == 0) continue;
+            if (aux == null or !g.queue_flags.graphics) aux = @intCast(j);
+            if (!g.queue_flags.graphics) break;
+        }
+        return .{ .index = @intCast(i), .timestamp_bits = f.timestamp_valid_bits, .aux = aux };
     }
     return error.NoComputeQueue;
 }

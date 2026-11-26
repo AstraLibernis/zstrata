@@ -358,3 +358,55 @@ and that could explain slow wake-ups and the CPU side slowing 5-15x after idle. 
 - The bimodal launch of runs 23-26 (41 vs ~2x) did not appear today: every launch row was
   41-42 us. Still unexplained.
 - Kept the switch: on a laptop or on battery, where Windows does throttle, it may matter.
+
+## Linux gaps: ours, the driver's or the OS's? (2026-11-26)
+
+Native Fedora 45 (kernel 7.3.4, RADV, governor and EPP `performance`), same machine. Before:
+`docs/data/runs/run29-32-linux.csv` (4 full runs at c02908a, screen on). After:
+`run33-36-linux-warm.csv` (4 full runs with the fixes and `--gpu-warm`; no run flagged
+disturbed, worst marker move 1.4-4.9%). Windows: runs 23-26. Compare with
+`python3 tools/linux/cmp.py WINDOWS... -- LINUX...`. Medians of 4. [MEASURED unless tagged]
+
+| gap before (Linux vs Windows) | cause, and how it was shown | whose | fix | after (Windows) |
+|---|---|---|---|---|
+| CPU read bandwidth, working set in L1: 334 vs 633 GB/s; all threads 2.1 vs 4.7 TB/s | the 1 GiB buffer came from glibc `malloc` (Zig's allocator when libc is linked), which returns it 16 bytes into a cache line, so every 64-byte load touched two lines. A stand-alone test at offsets 0/16/32/48: 648 / 334 / 334 / 334 GB/s | ours | `lib/mem.zig` `allocBig`: page-aligned | 643 GB/s; 5.2 TB/s (4.7) |
+| first write to fresh memory 8.5 vs 10.9 GB/s; latency 32-64 MiB 15-18 ns, 1 GiB 89 ns | 4 KiB pages: transparent huge pages are `madvise`-only here and nothing asked. The same test with `MADV_HUGEPAGE`: 8.4 -> 22-24 GB/s | OS default, ours to ask | `allocBig` asks for 2 MiB pages | first write 24.1 (10.9); latency 64 MiB 10.8 ns (24.1), 1 GiB 75 ns (93). `first-write-small-pages` keeps the 4 KiB number: 8.2 |
+| short GPU jobs ~2x slower: one chain of 1M steps 16.7 vs 7.2 ms, GPU ALU at 1-4 values per lane 0.45-0.55x, a 2.9 ms job 5.3 ms | the GPU clock. With power level `auto` the clock (hwmon `freq1_input`, sampled per row by `tools/linux/clkrun.py`) sits at ~1.6 GHz when work starts, climbs only after ~0.5 s of unbroken load to 3.2-3.4 GHz, and is back down ~0.1 s after the load lightens. Time per step tracks it exactly: 16.7 ns at 1615 MHz, 11.4 at 2370, 8.3 at 3230 (27 cycles each) | amdgpu power management | `--gpu-warm` (`gpu/warm.zig`): one lane kept busy on the second compute queue. No root needed | chains kernel 5.8 us (9.0); nets kernel 187 us (235); 2.9 ms job 1.6 ms (3.0) |
+| long chain still 1.16x slower at full clock | RADV's loop: `s_wait_alu`, compare and branch every step (27 cycles per step; AMD's compiler ~24 [DERIVED from 7.2 ns]) | RADV | `chains.comp` does 4 steps per loop round | 5.5 ns/step (7.2; Windows measured with the old shader) |
+| GPU scalar load latency 20.4 vs 11.7 ns | RADV loads the buffer's descriptor again at every use (`s_load_b128` inside the loop, `RADV_DEBUG=shaders`), and the scalar data load waits for it; AMD's compiler hoists it | RADV | `chase.comp` does 32 steps per loop round (RADV reuses the descriptor within a round) | 11.72 ns (11.96) at 4 KiB; 13.2 (11.7) at 16 KiB |
+| GPU ALU at <= 8 values per lane 0.85x after the clock fix | the same loop header | RADV | `fma.glsl` does 4 rounds per loop pass | K=4 41.9 (39.3), K=8 45.5 (47.0) TFLOP/s; wave32 K=8 23.7 (25.8) |
+
+Not fixed:
+
+- **Network kernels with weights read from memory (`mem`, `mem4`): 0.1-0.5x at W=32-128.** AMD's
+  compiler moves the loop-invariant weight loads into registers (165 VGPRs at W=64), RADV
+  keeps loading (48). Written that way by hand it is the `reg` variant, and best placement
+  against best placement Linux is 0.95-0.98x at W=8-48, 1.0-1.5x at W=32, 64, 96, 128 and
+  0.87x at W=192-256. `lds4` is 0.6-0.85x of Windows, `lds` 1.7-1.9x.
+- **Pool round trip, workers awake: 0.149 vs 0.123 us (2 threads), 0.54 vs 0.49 (8).** Bimodal on
+  Linux (0.121 or ~0.155 for the same pinned core pair, run to run); cause not found.
+- **Sustained GPU peaks 2-4% lower** (matrix units 206 vs 215 TFLOP/s). Under full load the
+  clock reads 3.1-3.2 GHz; Windows' clock under the same load is not known. Not investigated.
+
+What the warmer costs (same 8 runs, link part): staged uploads 0.5-0.7x (1 GiB: 9.7 vs 13.9 GB/s
+without it), the launch phase of a round trip 20 -> 71 us; empty round trips get faster (30 ->
+15 us). It is a flag for that reason. Learned while building it:
+
+- 8 ms warmer jobs slowed other work's GPU cache reads at 1-8 MiB by up to 1.5x: every job
+  boundary flushes the GPU's caches. ~0.2 s jobs: no difference.
+- A 4 s warmer job stalled the other queue's jobs for good (both fences never signalled).
+- A job cannot be stopped through a flag in a buffer: the GPU keeps its cached copy.
+- The amdgpu "stable pstate" call (`tools/linux/pstate.py`; any user may make it) pins the
+  clock at 2370 MHz and the memory clock at its top: better than a cold start, worse than the
+  warmed 3.2-3.4 GHz.
+
+**Screen off changes GPU memory numbers.** From ~15:15 the desktop's screen was locked and the
+display off; runs 33-36 are from that time. GPU latency past the caches (96-512 MiB) read
+430-850 ns instead of 200-330: the memory clock (hwmon `freq2_input`) sat at 96-456 MHz
+instead of 1258. Holding the stable pstate (memory clock 1258 MHz) brought 512 MiB back to
+264 ns. So in runs 33-36 the `gpu,chase` rows from 96 MiB are not comparable; measure GPU
+memory with the screen on.
+
+The shader changes also change what Windows would measure: `alu`, `lanes`, `occupancy`,
+`gpu,chase` and the GPU rows of `chains` / `chain-long` need a Windows rerun before the
+comparison is like for like.

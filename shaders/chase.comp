@@ -16,8 +16,16 @@ layout(push_constant) uniform Push { uint iters; uint mul; uint start; } pc;
 layout(set = 0, binding = 0) readonly buffer Ring { uint next[]; };
 layout(set = 0, binding = 1) writeonly buffer Out { uint o[]; };
 
+#define N8(q) next[next[next[next[next[next[next[next[q]]]]]]]]
+
 void main() {
     uint p = VECTOR != 0 ? pc.start + pc.mul * gl_LocalInvocationID.x : pc.start;
-    for (uint s = 0; s < pc.iters; s++) p = next[p];
+    // 32 steps per loop round. RADV loads the buffer's descriptor again wherever the buffer is
+    // used, so with one step per round every step waited for two loads, descriptor then data
+    // (20.4 ns against 11.7 from AMD's Windows compiler, which hoists it). Within one round
+    // RADV reuses the descriptor.
+    uint s = 0;
+    for (; s + 32 <= pc.iters; s += 32) p = N8(N8(N8(N8(p))));
+    for (; s < pc.iters; s++) p = next[p];
     o[gl_LocalInvocationID.x] = p;
 }

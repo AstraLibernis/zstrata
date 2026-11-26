@@ -28,6 +28,7 @@ const cpu_host = @import("../cpu/host.zig");
 const gpu_probes = @import("../gpu/probes.zig");
 const Lab = gpu_probes.Lab;
 const Pool = @import("../cpu/pool.zig").Pool;
+const mem = @import("../lib/mem.zig");
 
 const spv = struct {
     const saxpy align(@alignOf(u32)) = @embedFile("saxpy.spv").*;
@@ -165,10 +166,12 @@ fn probeMap(gpa: std.mem.Allocator, rig: *Rig, out: *std.Io.Writer) !void {
     const lab = rig.lab;
     const ns: []const u64 = if (rig.quick) &.{ 1 << 10, 64 << 10 } else &.{ 1 << 10, 4 << 10, 16 << 10, 64 << 10, 256 << 10, 1 << 20, 4 << 20, 16 << 20, 64 << 20 };
     const max = ns[ns.len - 1];
-    const x = try gpa.alloc(f32, max);
-    defer gpa.free(x);
-    const y = try gpa.alloc(f32, max);
-    defer gpa.free(y);
+    // Page-aligned, 2 MiB pages on Linux (lib/mem.zig): the CPU side reads and writes these 64
+    // bytes at a time.
+    const x = try mem.allocBig(f32, max, .huge);
+    defer mem.freeBig(f32, x);
+    const y = try mem.allocBig(f32, max, .huge);
+    defer mem.freeBig(f32, y);
     for (x, 0..) |*v, i| v.* = @floatFromInt(i % 1000);
     var pipe = try lab.pipeline(&spv.saxpy, &.{ rig.input.handle, rig.output.handle }, 12, .{ .subgroup_size = 64 });
     defer pipe.deinit(lab.ctx);
@@ -268,11 +271,11 @@ fn probeTrees(gpa: std.mem.Allocator, rig: *Rig, out: *std.Io.Writer) !void {
     const max = rs[rs.len - 1];
     var rng = std.Random.DefaultPrng.init(11);
     const rand = rng.random();
-    const x = try gpa.alloc(f32, max * features);
-    defer gpa.free(x);
+    const x = try mem.allocBig(f32, max * features, .huge);
+    defer mem.freeBig(f32, x);
     for (x) |*v| v.* = rand.float(f32);
-    const y = try gpa.alloc(f32, max);
-    defer gpa.free(y);
+    const y = try mem.allocBig(f32, max, .huge);
+    defer mem.freeBig(f32, y);
 
     // The forest lives on the GPU for the whole probe (a trained model): uploaded once.
     var fbuf = try gpu.Buffer.init(ctx, tree_count * inner_nodes * 4, usage, dl_hv, .{});

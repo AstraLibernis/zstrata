@@ -3,7 +3,7 @@
 
 const std = @import("std");
 
-const shaders = [_][]const u8{ "fma32", "fma16", "lds_bw", "stream", "chase", "coop_f16", "coop_bf16", "coop_f8", "coop_i8", "mlp_reg", "mlp_lds", "mlp_lds4", "mlp_mem", "mlp_mem4", "saxpy", "trees", "chains" };
+const shaders = [_][]const u8{ "fma32", "fma16", "lds_bw", "stream", "chase", "coop_f16", "coop_bf16", "coop_f8", "coop_i8", "mlp_reg", "mlp_lds", "mlp_lds4", "mlp_mem", "mlp_mem4", "saxpy", "trees", "chains", "spin" };
 const shader_includes = [_][]const u8{ "fma.glsl", "coop.glsl", "mlp.glsl" };
 
 pub fn build(b: *std.Build) void {

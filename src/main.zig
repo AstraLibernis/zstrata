@@ -17,6 +17,7 @@ const gpu = @import("gpu.zig");
 const cpu_probes = @import("cpu/probes.zig");
 const host = @import("cpu/host.zig");
 const gpu_probes = @import("gpu/probes.zig");
+const warm = @import("gpu/warm.zig");
 const link_probes = @import("link/probes.zig");
 const cross_probes = @import("cross/probes.zig");
 
@@ -44,6 +45,7 @@ pub fn main(init: std.process.Init) !void {
     var device_info = false;
     var no_check = false;
     var no_throttle = false;
+    var gpu_warm = false;
     var i: usize = 1;
     while (i < argv.len) : (i += 1) {
         const a = argv[i];
@@ -61,12 +63,14 @@ pub fn main(init: std.process.Init) !void {
             no_check = true;
         } else if (std.mem.eql(u8, a, "--no-throttle")) {
             no_throttle = true;
+        } else if (std.mem.eql(u8, a, "--gpu-warm")) {
+            gpu_warm = true;
         } else if (std.meta.stringToEnum(Part, a)) |p| {
             if (p == .all) {
                 try parts.appendSlice(arena, &.{ .cpu, .link, .gpu, .cross });
             } else try parts.append(arena, p);
         } else {
-            std.log.err("unknown argument: {s} (parts: cpu link gpu cross all; --only a,b; --no-check; --no-throttle; --list-stats; --device-info)", .{a});
+            std.log.err("unknown argument: {s} (parts: cpu link gpu cross all; --only a,b; --no-check; --no-throttle; --gpu-warm; --list-stats; --device-info)", .{a});
             std.process.exit(2);
         }
     }
@@ -106,6 +110,14 @@ pub fn main(init: std.process.Init) !void {
         if (!ok) report.note("--no-throttle: not available here (Windows only) or the call failed\n", .{});
         try report.write(out, .{ .device = "cpu", .probe = "setting", .variant = "no-throttle", .x = 0, .value = if (ok) 1 else 0, .unit = "flag", .ns = 0 });
     }
+    // --gpu-warm: keep one GPU lane busy for the whole run so the GPU's clock stays up
+    // (gpu/warm.zig). The row says whether it is running.
+    var warmer: ?warm.Warmer = if (gpu_warm) if (ctx) |*c| try warm.Warmer.init(c) else null else null;
+    defer if (warmer) |*w| w.deinit();
+    if (gpu_warm) {
+        if (warmer) |*w| try w.start() else report.note("--gpu-warm: no GPU opened, or the driver has no second compute queue\n", .{});
+        try report.write(out, .{ .device = "gpu", .probe = "setting", .variant = "keep-warm", .x = 0, .value = if (warmer != null) 1 else 0, .unit = "flag", .ns = 0 });
+    }
     // Disturbance check on full runs: markers before each part and at the end (`cpu,check`
     // rows). Spot checks with --only skip it; they are not meant to be kept.
     var check: ?cpu_probes.Check = if (only == null and !no_check) try cpu_probes.Check.init(gpa, quick) else null;
@@ -144,4 +156,5 @@ test {
     _ = gpu_probes;
     _ = link_probes;
     _ = cross_probes;
+    _ = warm;
 }

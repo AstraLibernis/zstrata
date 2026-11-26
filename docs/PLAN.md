@@ -44,9 +44,15 @@ projects. New rows: hybrid fence wait, CPU cost of each wait, batching dispatche
 from shared memory (`lds4`) and from buffers (`mem4`), spawn with a 1 MiB stack. Results and
 how to apply them: `docs/speed-playbook.md`.
 
+## S9 Native Linux, gaps against Windows ✓ (2026-11-26)
+**Owner:** test on Linux; find, prove and fix what trails Windows. 4 runs before (run29-32),
+4 after (run33-36): aligned 2 MiB-page buffers (`lib/mem.zig`), the GPU keep-warm job
+(`--gpu-warm`, `gpu/warm.zig`), loops unrolled in `chains`, `chase` and `fma` shaders.
+`measurements.md`, "Linux gaps"; playbook rules 14-18. Open: Windows rerun with the new
+shaders; a clean Linux set with the screen on; pool round trip (bimodal, 1.1-1.2x); `mem` /
+`lds4` network kernels on RADV; whether a root-set GPU power profile replaces the warmer.
+
 ## Later (not started)
-- Run the new rows on Linux (lds4, mem4, wait, batch, spawn-join-1mib, roundtrip splits have
-  Windows numbers only)
 - Apply the playbook to the other projects (zarbor, zmural and others), one at a time, when
   each is being worked on
 - Apply the guide to real code: M9's training kernel (register spill), zarbor (which parts, if

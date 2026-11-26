@@ -21,7 +21,16 @@ void main() {
     [[unroll]] for (uint i = 0; i < K; i++) r[i] = T(seed + float(i) * 1e-3);
     if (gl_SubgroupInvocationID < pc.lanes) {
         T a = T(pc.a), b = T(pc.b);
-        for (uint it = 0; it < pc.iters; it++) {
+        // Four rounds per loop pass: RADV's loop header (s_wait_alu, compare, branch) costs
+        // about as much as one fma, which showed as -15..25% at K <= 8 against AMD's Windows
+        // compiler. Each r[i] still gets its fmas in the same order.
+        uint it = 0;
+        for (; it + 4 <= pc.iters; it += 4) {
+            [[unroll]] for (uint u = 0; u < 4; u++) {
+                [[unroll]] for (uint i = 0; i < K; i++) r[i] = fma(r[i], a, b);
+            }
+        }
+        for (; it < pc.iters; it++) {
             [[unroll]] for (uint i = 0; i < K; i++) r[i] = fma(r[i], a, b);
         }
     }

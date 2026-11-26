@@ -8,7 +8,8 @@ being worked on, one at a time.
 
 Windows numbers: `docs/data/runs/run15-18-windows.csv` (spread
 `docs/data/strata-spread-windows-speed.csv`), medians of 4 full runs, 2026-11-08. Linux numbers:
-runs 1-5 (2026-10-15). Rows marked "Windows only" have not been run on Linux yet. Tags:
+runs 1-5 (2026-10-15); rules 14-18 from native Fedora, runs 29-36 (2026-11-26,
+`measurements.md`, "Linux gaps"). Rows marked "Windows only" predate those runs. Tags:
 [MEASURED] from these runs, [DERIVED] reasoned from them.
 
 ## The rules
@@ -163,6 +164,49 @@ routine: even scalar math runs 10x slower [DERIVED from scalar 0.0020 vs 0.0197 
 `-Dcpu=x86_64_v3` (any x86 CPU from about 2015) and size vectors with
 `std.simd.suggestVectorLength` rather than a fixed 16. Never ship below v3 code that uses
 `@mulAdd`.
+
+### 14. Align big buffers to the page, not to `malloc`
+With libc linked, Zig's general allocator is glibc `malloc`, and a big block from it starts 16
+bytes into a cache line: every 64-byte vector load then touches two lines. One thread reading
+an L1-sized set: 334 GB/s from such a block, 643 page-aligned (Windows' heap already aligns:
+633). [MEASURED, `cpu --only stream`.] **Apply:** buffers read or written with vectors come from
+`zstrata.mem.allocBig` (`src/lib/mem.zig`), or `alignedAlloc(T, .@"64", n)`.
+
+### 15. On Linux, ask for huge pages
+Transparent huge pages are `madvise`-only on Fedora, so a plain allocation gets 4 KiB pages:
+1 GiB first write 8.2 GB/s against 24.1 with `MADV_HUGEPAGE` (Windows 10.9); random reads in
+64 MiB 17.9 -> 10.8 ns, in 1 GiB 89 -> 75 ns. Rewriting is the same either way (21 GB/s).
+[MEASURED, `cpu --only alloc,chase`.] **Apply:** `allocBig(T, n, .huge)` for anything from 2 MiB
+up. No privilege needed. Rule 11 still holds, with a smaller factor.
+
+### 16. On Linux, a cold GPU runs at half clock: keep it warm, or make jobs long
+amdgpu's default power level starts work at ~1.6 GHz and reaches 3.2-3.4 GHz only after ~0.5 s
+of unbroken load; ~0.1 s of light load drops it again. Every job shorter than that pays 2x
+(1M-step chain 16.7 ms cold, 8.3 ms warmed; Windows 7.2). `gpu/warm.zig` keeps one lane busy
+on the second compute queue and holds the clock, with no root. It costs: staged uploads
+0.5-0.7x, launch of a round trip 20 -> 71 us. [MEASURED, `--gpu-warm`, `tools/linux/clkrun.py`.]
+**Apply:** for bursts of short kernels (inference, per-frame compute) run a warmer while the
+burst lasts, with jobs of ~0.2 s (short warmer jobs flush the GPU caches; one of 4 s stalled
+the other queue); not while streaming data over the link. Rule 1 helps here too: one long
+submit ramps the clock, many short ones never do.
+
+### 17. In shaders, do several steps per loop round
+RADV's loop header (`s_wait_alu`, compare, branch) costs about one multiply, and RADV loads a
+buffer's descriptor again at every use, so a tight loop pays both on every step. Unrolled by
+hand: dependent float chain 8.3 -> 5.5 ns/step (4 per round; Windows 7.2 with the old shader),
+scalar load chain 20.4 -> 11.7 ns (32 per round; Windows 11.7), fma at 4 values per lane 33 ->
+42 TFLOP/s (Windows 39). Same operations in the same order, so results stay bit-equal.
+[MEASURED, `cross --only chains,chain-long`, `gpu --only chase,alu`; `RADV_DEBUG=shaders`
+shows the code.] **Apply:** in hot shader loops with a small body, write 4-32 steps per round
+plus a remainder loop; move loop-invariant buffer reads into locals before the loop (RADV does
+not, AMD's compiler does: rule 7).
+
+### 18. Measure the GPU with the screen on
+With the display off (locked desktop), the GPU's memory clock idles at 96 MHz instead of 1258
+and follows load slowly: GPU latency past the caches read 430-850 ns instead of 200-330.
+[MEASURED, runs 33-36 against a rerun under the stable pstate.] **Apply:** note the display
+state with any GPU memory number; for an unattended run hold the memory clock with
+`tools/linux/pstate.py` (which also fixes the core clock at 2370 MHz, so not for ALU rows).
 
 ## How to measure, so the numbers hold
 

@@ -19,6 +19,7 @@ const std = @import("std");
 const host = @import("host.zig");
 const report = @import("../report.zig");
 const Pool = @import("pool.zig").Pool;
+const mem = @import("../lib/mem.zig");
 
 test {
     _ = @import("pool.zig");
@@ -300,8 +301,8 @@ pub fn probeChase(gpa: std.mem.Allocator, out: *std.Io.Writer, quick: bool) !voi
     var buf: [64]u64 = undefined;
     var rng = std.Random.DefaultPrng.init(7);
     for (sizes(&buf, max)) |s| {
-        const ring = try gpa.alloc(u32, s / 4);
-        defer gpa.free(ring);
+        const ring = try mem.allocBig(u32, s / 4, .huge);
+        defer mem.freeBig(u32, ring);
         @memset(ring, 0);
         try buildRing(gpa, ring, rng.random(), line_u32);
         var start: u32 = 0;
@@ -338,10 +339,12 @@ fn streamWork(ctx: *const StreamCtx, t: u32, n: u64) void {
     std.mem.doNotOptimizeAway(@reduce(.Add, a0 + a1 + a2 + a3));
 }
 
-pub fn probeStream(gpa: std.mem.Allocator, out: *std.Io.Writer, quick: bool) !void {
+pub fn probeStream(out: *std.Io.Writer, quick: bool) !void {
     const max: u64 = if (quick) 1 << 20 else 1 << 30;
-    const data = try gpa.alloc(f32, max / 4);
-    defer gpa.free(data);
+    // Page-aligned: a block from glibc's malloc starts 16 bytes into a cache line, and every
+    // 64-byte load from it then touches two lines (half the L1 bandwidth).
+    const data = try mem.allocBig(f32, max / 4, .huge);
+    defer mem.freeBig(f32, data);
     for (data, 0..) |*d, i| d.* = @floatFromInt(i & 1023);
     for ([_]u32{ 1, cpus }) |threads| {
         var s: u64 = 4 << 10;
@@ -476,24 +479,30 @@ pub fn probeSync(gpa: std.mem.Allocator, out: *std.Io.Writer, quick: bool) !void
 
 pub fn probeAlloc(out: *std.Io.Writer, quick: bool) !void {
     const size: usize = if (quick) 16 << 20 else 1 << 30;
-    var first: [reps]f64 = undefined;
-    var again: [reps]f64 = undefined;
-    for (0..reps) |r| {
-        const mem = try std.heap.page_allocator.alloc(u8, size);
-        defer std.heap.page_allocator.free(mem);
-        var t0 = nowNs();
-        @memset(mem, 1);
-        first[r] = @floatFromInt(nowNs() - t0);
-        t0 = nowNs();
-        @memset(mem, 2);
-        again[r] = @floatFromInt(nowNs() - t0);
-        std.mem.doNotOptimizeAway(mem[size / 2]);
-    }
-    const f = report.median(&first);
-    const a = report.median(&again);
     const sz: f64 = @floatFromInt(size);
-    try report.write(out, .{ .device = "cpu", .probe = "alloc", .variant = "first-write", .x = sz, .value = sz / f, .unit = "GB/s", .ns = f });
-    try report.write(out, .{ .device = "cpu", .probe = "alloc", .variant = "write-again", .x = sz, .value = sz / a, .unit = "GB/s", .ns = a });
+    // The way a program should ask for a big block (lib/mem.zig: 2 MiB pages on Linux), then,
+    // on Linux, the same on 4 KiB pages: what a plain allocation gets there.
+    const kinds = [_]mem.Pages{ .huge, .small };
+    const names = [_][2][]const u8{ .{ "first-write", "write-again" }, .{ "first-write-small-pages", "write-again-small-pages" } };
+    for (kinds[0..if (@import("builtin").os.tag == .linux) 2 else 1], names[0..]) |pages, name| {
+        var first: [reps]f64 = undefined;
+        var again: [reps]f64 = undefined;
+        for (0..reps) |r| {
+            const block = try mem.allocBig(u8, size, pages);
+            defer mem.freeBig(u8, block);
+            var t0 = nowNs();
+            @memset(block, 1);
+            first[r] = @floatFromInt(nowNs() - t0);
+            t0 = nowNs();
+            @memset(block, 2);
+            again[r] = @floatFromInt(nowNs() - t0);
+            std.mem.doNotOptimizeAway(block[size / 2]);
+        }
+        const f = report.median(&first);
+        const a = report.median(&again);
+        try report.write(out, .{ .device = "cpu", .probe = "alloc", .variant = name[0], .x = sz, .value = sz / f, .unit = "GB/s", .ns = f });
+        try report.write(out, .{ .device = "cpu", .probe = "alloc", .variant = name[1], .x = sz, .value = sz / a, .unit = "GB/s", .ns = a });
+    }
 }
 
 // ---------------------------------------------------------------- disturbance check
@@ -510,8 +519,8 @@ pub const Marks = struct { l1_ns: f64, ram_ns: f64, fma_tflops: f64 };
 pub const disturbed_tolerance = 0.10;
 
 pub const Check = struct {
-    l1: []u32,
-    ram: []u32,
+    l1: []align(mem.page) u32,
+    ram: []align(mem.page) u32,
     l1_at: u32 = 0,
     ram_at: u32 = 0,
     quick: bool,
@@ -521,10 +530,10 @@ pub const Check = struct {
     /// 12-13% across clean runs). Built once and kept for the whole run.
     pub fn init(gpa: std.mem.Allocator, quick: bool) !Check {
         const ram_bytes: usize = if (quick) 1 << 20 else 1 << 30;
-        const l1 = try gpa.alloc(u32, (4 << 10) / 4);
-        errdefer gpa.free(l1);
-        const ram = try gpa.alloc(u32, ram_bytes / 4);
-        errdefer gpa.free(ram);
+        const l1 = try mem.allocBig(u32, (4 << 10) / 4, .huge);
+        errdefer mem.freeBig(u32, l1);
+        const ram = try mem.allocBig(u32, ram_bytes / 4, .huge);
+        errdefer mem.freeBig(u32, ram);
         var rng = std.Random.DefaultPrng.init(11);
         @memset(l1, 0);
         try buildRing(gpa, l1, rng.random(), line_u32);
@@ -534,8 +543,8 @@ pub const Check = struct {
     }
 
     pub fn deinit(self: *Check, gpa: std.mem.Allocator) void {
-        gpa.free(self.l1);
-        gpa.free(self.ram);
+        mem.freeBig(u32, self.l1);
+        mem.freeBig(u32, self.ram);
         self.marks.deinit(gpa);
         self.* = undefined;
     }
@@ -614,7 +623,7 @@ pub fn run(gpa: std.mem.Allocator, out: *std.Io.Writer, name: []const u8, quick:
     if (std.mem.eql(u8, name, "clock")) try probeClock(out, quick) //
     else if (std.mem.eql(u8, name, "alu")) try probeAlu(out, quick) //
     else if (std.mem.eql(u8, name, "chase")) try probeChase(gpa, out, quick) //
-    else if (std.mem.eql(u8, name, "stream")) try probeStream(gpa, out, quick) //
+    else if (std.mem.eql(u8, name, "stream")) try probeStream(out, quick) //
     else if (std.mem.eql(u8, name, "branch")) try probeBranch(gpa, out, quick) //
     else if (std.mem.eql(u8, name, "sync")) try probeSync(gpa, out, quick) //
     else if (std.mem.eql(u8, name, "alloc")) try probeAlloc(out, quick) //

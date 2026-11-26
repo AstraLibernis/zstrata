@@ -9,13 +9,20 @@ layout(local_size_x = 64) in;
 layout(push_constant) uniform Push { uint chains; uint steps; } pc;
 layout(set = 0, binding = 0) writeonly buffer Out { float y[]; };
 
+#define STEP { precise float t = 3.9 * x; x = t * (1.0 - x); }
+
 void main() {
     uint c = gl_GlobalInvocationID.x;
     if (c >= pc.chains) return;
     precise float x = 0.1 + 0.8 * float(c % 1024u) / 1024.0;
-    for (uint s = 0; s < pc.steps; s++) {
-        precise float t = 3.9 * x;
-        x = t * (1.0 - x);
+    // Four steps per loop round: RADV's loop header (s_wait_alu, compare, branch) costs about
+    // as much as one multiply, so one branch per step made each step ~27 clock cycles.
+    uint s = 0;
+    for (; s + 4 <= pc.steps; s += 4) {
+        STEP STEP STEP STEP
+    }
+    for (; s < pc.steps; s++) {
+        STEP
     }
     y[c] = x;
 }

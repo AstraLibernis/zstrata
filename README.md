@@ -30,6 +30,7 @@ zig build run -Doptimize=ReleaseFast -- all > docs/data/strata.csv   # everythin
 zig build run -Doptimize=ReleaseFast -- cpu --only alu,chase         # some probes (no check)
 zig build run -Doptimize=ReleaseFast -- all --no-check               # full run without the check
 zig build run -Doptimize=ReleaseFast -- all --no-throttle            # opt out of Windows power throttling
+zig build run -Doptimize=ReleaseFast -- all --gpu-warm               # Linux: hold the GPU clock up (see playbook rule 16)
 zig build test                                                       # Debug: every probe, small sizes
 zig-out/bin/zstrata --device-info    # which driver answers, compute limits, heaps, extensions
 zig-out/bin/zstrata gpu --list-stats # the per-shader statistics this driver reports
@@ -47,7 +48,9 @@ Runs on Linux and Windows from the same source; OS-specific calls sit behind
 (sleeping workers) and the loader in `src/gpu.zig`.
 
 - **Linux:** Vulkan through RADV, using the persisted stack in `~/.local/vulkan`
-  (`tools/env.sh`; `VKPREFIX` overrides).
+  (`tools/env.sh`; `VKPREFIX` overrides). `tools/linux/` has the helpers behind the Linux
+  findings: `clkrun.py` (a run with the GPU clock beside every row), `pstate.py` (hold
+  amdgpu's stable pstate), `cmp.py` (Windows runs against Linux runs).
 - **Windows:** AMD's driver (it ships `vulkan-1.dll`). The build needs `glslc` from shaderc at
   `%USERPROFILE%\.local\shaderc\bin` (`VKPREFIX` overrides); the tests need the Khronos
   validation layer at `%USERPROFILE%\.local\vk-layers` (`VKLAYERS` overrides). Both are

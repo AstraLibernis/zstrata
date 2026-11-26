@@ -18,9 +18,12 @@ pub const Pool = @import("cpu/pool.zig").Pool;
 pub const simd = @import("lib/simd.zig");
 /// Radix sorts for integers, floats, and row indices by a float column.
 pub const sort = @import("lib/sort.zig");
+/// Big buffers: page-aligned and, on Linux, on 2 MiB pages.
+pub const mem = @import("lib/mem.zig");
 
 test {
     _ = @import("cpu/pool.zig");
     _ = simd;
     _ = sort;
+    _ = mem;
 }
