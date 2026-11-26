@@ -46,7 +46,7 @@ how to apply them: `docs/speed-playbook.md`.
 
 ## S9 Native Linux, gaps against Windows ✓ (2026-11-26)
 **Owner:** test on Linux; find, prove and fix what trails Windows. 4 runs before (run29-32),
-4 after (run33-36): aligned 2 MiB-page buffers (`lib/mem.zig`), the GPU keep-warm job
+4 after with the warmer (run33-36), 4 after without (run37-40): aligned 2 MiB-page buffers (`lib/mem.zig`), the GPU keep-warm job
 (`--gpu-warm`, `gpu/warm.zig`), loops unrolled in `chains`, `chase` and `fma` shaders.
 `measurements.md`, "Linux gaps"; playbook rules 14-18. Open: Windows rerun with the new
 shaders; a clean Linux set with the screen on; pool round trip (bimodal, 1.1-1.2x); `mem` /

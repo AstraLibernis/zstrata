@@ -183,8 +183,8 @@ up. No privilege needed. Rule 11 still holds, with a smaller factor.
 amdgpu's default power level starts work at ~1.6 GHz and reaches 3.2-3.4 GHz only after ~0.5 s
 of unbroken load; ~0.1 s of light load drops it again. Every job shorter than that pays 2x
 (1M-step chain 16.7 ms cold, 8.3 ms warmed; Windows 7.2). `gpu/warm.zig` keeps one lane busy
-on the second compute queue and holds the clock, with no root. It costs: staged uploads
-0.5-0.7x, launch of a round trip 20 -> 71 us. [MEASURED, `--gpu-warm`, `tools/linux/clkrun.py`.]
+on the second compute queue and holds the clock, with no root. It costs: staged uploads from
+256 MiB 0.74x, launch of a round trip 20 -> 71 us. [MEASURED, `--gpu-warm`, `tools/linux/clkrun.py`.]
 **Apply:** for bursts of short kernels (inference, per-frame compute) run a warmer while the
 burst lasts, with jobs of ~0.2 s (short warmer jobs flush the GPU caches; one of 4 s stalled
 the other queue); not while streaming data over the link. Rule 1 helps here too: one long
@@ -201,10 +201,12 @@ shows the code.] **Apply:** in hot shader loops with a small body, write 4-32 st
 plus a remainder loop; move loop-invariant buffer reads into locals before the loop (RADV does
 not, AMD's compiler does: rule 7).
 
-### 18. Measure the GPU with the screen on
+### 18. Measure the GPU with the screen on, and know the memory clock
 With the display off (locked desktop), the GPU's memory clock idles at 96 MHz instead of 1258
-and follows load slowly: GPU latency past the caches read 430-850 ns instead of 200-330.
-[MEASURED, runs 33-36 against a rerun under the stable pstate.] **Apply:** note the display
+and follows load slowly: GPU latency past the caches read 430-850 ns instead of 200-330. Even
+with the screen on, light memory work ran 1.2-1.45x behind Windows; with the memory clock
+held at its top it is within 10% (512 MiB: 255-265 ns, Windows 240-248).
+[MEASURED, runs 29-40 and two runs under the stable pstate.] **Apply:** note the display
 state with any GPU memory number; for an unattended run hold the memory clock with
 `tools/linux/pstate.py` (which also fixes the core clock at 2370 MHz, so not for ALU rows).
 

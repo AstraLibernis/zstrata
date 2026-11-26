@@ -384,13 +384,34 @@ Not fixed:
   against best placement Linux is 0.95-0.98x at W=8-48, 1.0-1.5x at W=32, 64, 96, 128 and
   0.87x at W=192-256. `lds4` is 0.6-0.85x of Windows, `lds` 1.7-1.9x.
 - **Pool round trip, workers awake: 0.149 vs 0.123 us (2 threads), 0.54 vs 0.49 (8).** Bimodal on
-  Linux (0.121 or ~0.155 for the same pinned core pair, run to run); cause not found.
+  Linux: batches of 20,000 round trips read ~120 or ~150-160 ns and switch between the two
+  within one process, also with both threads pinned (pairs 0,1 / 2,5 / 3,4; the SMT pair 0,8
+  stays at ~120). Both cores hold 5.22-5.23 GHz throughout (add-chain clock on each), so it
+  is not the clock or the placement. Polling without `pause` for the first 256 spins did not
+  settle it (reverted). Cause not found.
 - **Sustained GPU peaks 2-4% lower** (matrix units 206 vs 215 TFLOP/s). Under full load the
   clock reads 3.1-3.2 GHz; Windows' clock under the same load is not known. Not investigated.
 
-What the warmer costs (same 8 runs, link part): staged uploads 0.5-0.7x (1 GiB: 9.7 vs 13.9 GB/s
-without it), the launch phase of a round trip 20 -> 71 us; empty round trips get faster (30 ->
-15 us). It is a flag for that reason. Learned while building it:
+What the warmer costs, on the same code (runs 37-40: 4 full runs without it, same afternoon,
+screen off like runs 33-36). Windows advantage, median over a probe's sizes, >1 = Windows
+ahead:
+
+| rows | without | with `--gpu-warm` |
+|---|---|---|
+| `chain-long` kernel / `chains` kernel | 2.05 / 1.45 | 0.78 / 0.65 |
+| `nets` kernel / `trees` kernel | 1.23 / 1.42 | 0.55 / 0.90 |
+| 2.9 ms job, wall (`wait`) | 1.32-1.35 | 0.54-0.55 |
+| empty round trips | 0.28-0.43 | 0.13-0.19 |
+| staged download | 1.15 | 0.63 |
+| staged upload | 0.81 | 0.94 |
+| small jobs with the round trip (`chains` / `nets` / `map` resident) | 0.40 / 0.53 / 0.50 | 0.68 / 0.75 / 0.66 |
+| `map` with transfer | 0.84 | 1.05 |
+
+So the unrolled shaders alone do not close the kernel gaps: without the clock they stay
+1.2-2x behind. The warmer loses on staged uploads from 256 MiB (9.7 vs 13.1 GB/s; the GPU-side
+copy and direct writes are unchanged), on the launch phase of a round trip (20 -> 71 us) and
+on tiny jobs timed with their round trip (still ahead of Windows). It stays a flag. Learned
+while building it:
 
 - 8 ms warmer jobs slowed other work's GPU cache reads at 1-8 MiB by up to 1.5x: every job
   boundary flushes the GPU's caches. ~0.2 s jobs: no difference.
@@ -404,8 +425,25 @@ without it), the launch phase of a round trip 20 -> 71 us; empty round trips get
 display off; runs 33-36 are from that time. GPU latency past the caches (96-512 MiB) read
 430-850 ns instead of 200-330: the memory clock (hwmon `freq2_input`) sat at 96-456 MHz
 instead of 1258. Holding the stable pstate (memory clock 1258 MHz) brought 512 MiB back to
-264 ns. So in runs 33-36 the `gpu,chase` rows from 96 MiB are not comparable; measure GPU
+264 ns. So in runs 33-40 the `gpu,chase` rows from 96 MiB are not comparable; measure GPU
 memory with the screen on.
+
+**The memory clock also explains the morning's gap.** GPU latency past the caches, ns
+(`docs/data/runs/gpu-mem-peak-pstate-*-linux.csv`, 2 runs under the stable pstate):
+
+| ring | Windows | Linux, screen on (runs 29-32) | Linux, screen off | Linux, stable pstate |
+|---|---|---|---|---|
+| 96 MiB scalar / vector | 191 / 183 | 227 / 225 | 239 / 422 | 206 / 209 |
+| 128 MiB | 215 / 202 | 267 / 296 | 245 / 619 | 211 / 202 |
+| 256 MiB | 238 / 235 | 318 / 321 | 270 / 747 | 252 / 247 |
+| 512 MiB | 248 / 240 | 363 / 350 | 294 / 664 | 255 / 265 |
+| 1 MiB (in cache) | 61 / 77 | 61 / 77 | 61 / 76 | 85 / 112 |
+
+With the memory clock held at its top Linux is within 0-10% of Windows past the caches; with
+the default power level it was 1.2-1.45x behind even with the screen on, because one lane of
+reads is not enough load to raise that clock [DERIVED: the clock was only sampled with the
+screen off]. The stable pstate pays for it in the caches (core clock fixed at 2370 MHz). Both
+clocks at their top at once needs a power profile set by root; not tested.
 
 The shader changes also change what Windows would measure: `alu`, `lanes`, `occupancy`,
 `gpu,chase` and the GPU rows of `chains` / `chain-long` need a Windows rerun before the
