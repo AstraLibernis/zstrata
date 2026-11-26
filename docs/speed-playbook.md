@@ -26,7 +26,10 @@ Dependent dispatches in one command buffer, with a barrier between each, pay it 
 | 64 | 44.4 us | 1.5 us |
 | 256 | 47.7 us | 0.85 us |
 
-[MEASURED, `link --only batch`, Windows only.] 55x at 256. **Apply:** record a whole training
+[MEASURED, `link --only batch`, Windows runs 15-18.] 55x at 256. Linux (runs 37-40; with
+`--gpu-warm`, runs 33-36): one submit each 33-42 us (17-23 warmed); all in one submit 42.6 /
+9.4 / 3.6 / 2.0 / 1.5 us per dispatch at 1 / 4 / 16 / 64 / 256 (17.8 / 6.4 / 2.6 / 1.4 / 0.93
+warmed): 22x at 256. **Apply:** record a whole training
 step, frame or pipeline of kernels into one command buffer; never submit + wait per layer or
 per step. This is the biggest single lever, and it also removes most of the Windows round-trip
 penalty (rule 2) because there are fewer round trips to pay for.
@@ -40,9 +43,10 @@ After a submit, how the CPU waits decides both latency and the CPU it burns:
 | spin (poll vkGetFenceStatus) | 44.2 us | 2861 us | 2883 us (a whole core) |
 | hybrid (poll 50 us, then block) | 44.1 us | 2886 us | 91 us |
 
-[MEASURED, `link --only roundtrip,wait`, prerecorded buffer, Windows only.] Blocking costs
-~5-10 us on Windows because the kernel has to wake the thread; Linux's blocking round trip is
-already 33.8 us. **Apply:** `Commands.resubmit(ctx, .hybrid)` from `src/gpu.zig` (bounded: the
+[MEASURED, `link --only roundtrip,wait`, prerecorded buffer, Windows runs 15-18.] Blocking costs
+~5-10 us on Windows because the kernel has to wake the thread. On Linux (runs 37-40) the three
+waits tie: empty round trip 31.5 / 30.5 / 30.5 us, and the same job's CPU cost is 5 us blocking,
+55 us hybrid, a whole core spinning; the hybrid wait buys nothing there but costs little. **Apply:** `Commands.resubmit(ctx, .hybrid)` from `src/gpu.zig` (bounded: the
 spin has a 10 s guard) wherever a short GPU job sits on the critical path (inference of one
 batch, readbacks). Plain `.block` everywhere else. Never `.spin` on long jobs.
 
@@ -117,7 +121,7 @@ tile or network size, and keep the validation layer on in tests (it caught this)
 | | Linux | Windows |
 |---|---|---|
 | spawn + join, Zig default stack (16 MiB) | 9 us | 92 us |
-| spawn + join, 1 MiB stack | not run | 58 us |
+| spawn + join, 1 MiB stack | 8 us | 58 us |
 | hand work to a pool, workers awake | 0.16-0.56 us (2-8 threads) | 0.12-0.49 us |
 
 [MEASURED, `cpu --only sync`.] Zig's std commits the whole default stack up front on Windows
@@ -128,13 +132,14 @@ plenty for ordinary code); never spawn per task.
 ### 10. Let idle pool workers sleep, not spin or yield
 A pool whose workers yield forever looks fast (0.4 us to start work after idle) but keeps every
 core busy. Sleeping on the epoch (futex on Linux, `RtlWaitOnAddress` on Windows) costs 10.5 /
-15.9 / 26.0 us to wake 2 / 4 / 8 threads on Windows (Linux 20-29 us). [MEASURED,
+15.9 / 26.0 us to wake 2 / 4 / 8 threads on Windows (Linux 12 / 26 / 26 us, 36 for 16). [MEASURED,
 `pool-after-idle`.] **Apply:** spin a budget, then park: `src/cpu/pool.zig` is the reference;
 its tests assert that idle helpers are really asleep.
 
 ### 11. Reuse allocations
 Writing freshly allocated memory runs at half the speed of rewriting it: 1 GiB first write 11.3
-vs 20.9 GB/s on Windows (Linux 4.6 vs 10.4). [MEASURED, `cpu --only alloc`.] **Apply:** keep
+vs 20.9 GB/s on Windows (Linux, 4 KiB pages: 8.2 vs 21.0; with 2 MiB pages the first write is
+not slower, rule 15). [MEASURED, `cpu --only alloc`.] **Apply:** keep
 scratch buffers across rounds instead of allocating per round.
 
 ### 12. Leave headroom on the CPU when running below normal priority
@@ -225,8 +230,9 @@ state with any GPU memory number; for an unattended run hold the memory clock wi
 
 | project | rules most likely to pay [DERIVED] |
 |---|---|
-| GPU network projects | 1, 2, 3, 4, 5, 6, 7, 8 |
-| Vulkan lab projects | 1, 2, 5, 6, 8 |
-| zmural (GPU wallpaper) | 1, 3, 8; the frame loop is the submit loop |
+| GPU network projects | 1, 2, 3, 4, 5, 6, 7, 8; on Linux 16 (short kernels), 17 (inner loops), 18 when measuring |
+| Vulkan lab projects | 1, 2, 5, 6, 8, 17, 18 |
+| zmural (GPU wallpaper) | 1, 3, 8; the frame loop is the submit loop. 16 does not apply: a frame loop keeps the GPU busy by itself [DERIVED] |
 | zarbor (trees, CPU) | 9 (its pool spawns helpers with the 16 MiB default), 10 (done in c639dbb), 11, 12; 4 says trees go to the GPU only from ~4K rows |
-| CPU math projects | 9, 11, 12 |
+| CPU math projects | 9, 11, 12, 14, 15 |
+| anything with buffers of 2 MiB or more read by vectors (zarbor's feature matrices, zscour) | 14, 15 |

@@ -61,6 +61,19 @@ cannot be done with this setup.
 | D4 | **CPU vs GPU bit-equality**: same fma chain on both, count the results that differ | the vec4 kernels were shown bit-equal; tells whether that holds in general or only for that kernel | GPU networks (CPU checks of GPU results) |
 | D5 | **Fast-math cost and error**: `@setFloatMode(.optimized)` vs strict on the ALU and MLP probes | measures how much speed strict IEEE costs, and how much error the fast mode brings | all numeric code |
 
+## E. Linux (added 2026-11-26, after the native Fedora runs)
+
+| # | experiment | why it might pay |
+|---|---|---|
+| E1 | **GPU power profile set by root**: `pp_power_profile_mode` (COMPUTE, 3D_FULL_SCREEN, CUSTOM) and `power_dpm_force_performance_level`, each against the same short-job, long-job and memory-latency rows | the default profile starts work at half clock and lets the memory clock idle; the warmer fixes the first at a cost and the stable pstate fixes the second at a cost. A profile may fix both **[gated: root; a udev rule could hand the two files to this account]** |
+| E2 | **Does the clock ramp differ with the screen off?** the same `clkrun.py` rows, screen on and off | the ramp was sampled with the screen on, the memory clock with it off; neither both ways |
+| E3 | **Why the warmer slows staged uploads from 256 MiB** (9.7 vs 13.1 GB/s) when the GPU-side copy and direct writes do not move | decides whether the warmer can stay on while data streams over the link |
+| E4 | **Pool round trip, two modes** (~120 and ~150-160 ns, same cores, same clock): count cache-line transfers and machine clears per round trip with `perf stat` in each mode | the only CPU row still behind Windows; a pool that stays in the fast mode gains 20% on tiny tasks |
+| E5 | **RADV by version**: the loop header (`s_wait_alu`) and the descriptor load inside loops, on the current Mesa and on Mesa main | if a newer RADV hoists them, rule 17 becomes a note; if not, it is a report for Mesa with `chase.comp` as the test case |
+| E6 | **Memory-weight network kernels with the weights copied into locals by hand** only for the rows a lane needs | what AMD's compiler does by itself (165 VGPRs at W=64); would show whether `mem` can match Windows on RADV without the full `reg` layout |
+
+A4 (large pages) is answered for Linux by rule 15; on Windows it stays gated.
+
 ## Suggested order [DERIVED]
 
 1. C1, C2, C3: cheap, and they make every later number more trustworthy.

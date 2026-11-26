@@ -48,9 +48,16 @@ how to apply them: `docs/speed-playbook.md`.
 **Owner:** test on Linux; find, prove and fix what trails Windows. 4 runs before (run29-32),
 4 after with the warmer (run33-36), 4 after without (run37-40): aligned 2 MiB-page buffers (`lib/mem.zig`), the GPU keep-warm job
 (`--gpu-warm`, `gpu/warm.zig`), loops unrolled in `chains`, `chase` and `fma` shaders.
-`measurements.md`, "Linux gaps"; playbook rules 14-18. Open: Windows rerun with the new
-shaders; a clean Linux set with the screen on; pool round trip (bimodal, 1.1-1.2x); `mem` /
-`lds4` network kernels on RADV; whether a root-set GPU power profile replaces the warmer.
+`measurements.md`, "Linux gaps"; playbook rules 14-18. Open:
+- Windows rerun with the new shaders (alu, lanes, occupancy, gpu chase, chains GPU rows)
+- a clean Linux set with the screen on (runs 33-40 had it off: GPU memory rows from 96 MiB)
+- a GPU power profile set by root (`pp_power_profile_mode`,
+  `power_dpm_force_performance_level`): the only way seen to have the core clock and the
+  memory clock at their top together; it might replace the warmer. Needs the owner
+- pool round trip, workers awake: 1.1-1.2x behind, bimodal, cause not found
+- `mem` / `mem4` / `lds4` network kernels on RADV; sustained GPU peaks 2-4% lower
+- the page (`docs/page/strata.html`) and `docs/data/strata.csv` still show the 2026-10-15
+  container run
 
 ## Later (not started)
 - Apply the playbook to the other projects (zarbor, zmural and others), one at a time, when

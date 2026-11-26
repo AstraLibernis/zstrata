@@ -8,7 +8,8 @@ other projects are checked against, so it depends on none of them (its thread po
 - **cpu**: the core clock (one core busy, all busy), vector width (scalar → AVX-512) ×
   independent chains, threads and SMT, cache and RAM
   latency/bandwidth, branch prediction, cost of handing work to threads (spawn with Zig's
-  default and a 1 MiB stack, pool round trips hot and after idle), first-touch memory
+  default and a 1 MiB stack, pool round trips hot and after idle), first-touch memory (on
+  Linux with 2 MiB and with 4 KiB pages)
 - **link**: CPU ↔ GPU: staged vs direct (resizable BAR) uploads, downloads, the fixed cost of
   one GPU round trip and where it goes (recording, waiting: block / spin / hybrid), what each
   wait costs the CPU on a long job, batching many dispatches into one submit, and one trip
@@ -72,6 +73,8 @@ Other projects can import the parts that measured fastest (`src/lib.zig`):
   where the CPU has the instruction.
 - `sort`: radix sorts for unsigned integers, for floats, and for row indices ordered by a
   float column.
+- `mem`: `allocBig` / `freeBig`, big buffers page-aligned and, on Linux, on 2 MiB pages
+  (playbook rules 14 and 15).
 
 In the other project's `build.zig`:
 
@@ -95,6 +98,11 @@ off in test builds); `gpu.validation_messages` counts validation warnings and er
 
 ## Versions
 
+- **Unreleased** (branch `linux-parity`, 2026-11-26): native Linux against Windows. `mem` in
+  the library; `--gpu-warm` and `src/gpu/warm.zig` (keeps the GPU clock up on Linux);
+  `Context.aux_queue` (a second compute queue where the driver has one); the `chains`, `chase`
+  and `fma` shaders do several steps per loop round, so their GPU rows are not comparable
+  with runs made before; `alloc` gains `*-small-pages` rows on Linux; `tools/linux/`.
 - **0.2.0** (2026-11-25): `report.progress` defaults to off in any test build; the Vulkan
   loader's notes are dropped unless `gpu.show_loader_notes` is set; the missing-validation-layer
   warning names `VK_ADD_LAYER_PATH` on Windows and `tools/env.sh` elsewhere.
