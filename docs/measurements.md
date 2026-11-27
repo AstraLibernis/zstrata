@@ -480,12 +480,20 @@ setting, no warmer, screen on, 20 s idle before each, one run each
   (latency past the caches within 5-8% of Windows), but the core clock is fixed near 2.5 GHz
   with no boost, so long and heavy work loses 25-36%.
 - **Stock profiles** COMPUTE (5) and 3D_FULL_SCREEN (1) changed nothing measurable here.
-- **Fabric clock** (one run of `gpu --only chase` each): adding `6 1 0 4 2400 1 0 5898240
-  -6553 -6553` to the custom profile held FCLK at 2400 MHz and brought latency past the
-  caches to 311 / 316 ns at 512 MiB (from 427 / 395) and 67 / 88 ns at 8 MiB (from 86 / 123);
-  the memory clock still read 456 MHz. Windows: 248 / 240.
+- **Fabric clock**: adding `6 1 0 4 2400 1 0 5898240 -6553 -6553` (FCLK min active 2400) to
+  the custom profile looked like a gain in one run (512 MiB: 427 -> 311 ns) and was not one
+  on a repeat (311 ns with and without it). Run-to-run noise; no effect shown.
 
 So it can be done from this account: the custom core-clock profile replaces the warmer. Not
 done yet: 4 full runs under it; the memory clock together with the boosted core clock (the
 fabric-clock line gets part of the way); the same with the screen locked; idle power is ~40 W
 higher while the profile is set, so it belongs around a run, not left on.
+
+**4 full runs under the custom profile** (`run41-44-linux-custom.csv`, `tools/linux/fullruns.sh`,
+no warmer; no run flagged disturbed). Against Windows runs 23-26, Linux is at or ahead on every
+probe except, as Windows advantage (median over a probe's sizes): network kernels with weights
+in memory or `lds4` 1.2-1.6x; pool round trip 1.16x; staged and direct downloads 1.14-1.15x;
+GPU latency past the caches. The screen locked during run 42 and was off for runs 43-44:
+512 MiB latency read 287-310 ns in runs 41-42 (Windows 248) and ~750 ns in 43-44, so the set
+is mixed for those rows and the memory clock stays the open GPU item. Not tried: pinning it
+through `pp_dpm_mclk` with level `manual` (root-only file).

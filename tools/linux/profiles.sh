@@ -11,7 +11,9 @@ for setting in "$@"; do
   # level:profile[:tag], profile may be a whole CUSTOM line ("6 0 0 4 3300 ...")
   IFS=: read level prof tag0 <<< "$setting"
   echo $level > $G/power_dpm_force_performance_level || exit 1
-  echo $prof > $G/pp_power_profile_mode || exit 1
+  # several CUSTOM lines (GFXCLK; FCLK) separated by ';'
+  IFS=';' read -ra lines <<< "$prof"
+  for l in "${lines[@]}"; do echo "$l" > $G/pp_power_profile_mode || exit 1; done
   sleep 20
   tag=${tag0:-$level-p$prof}
   echo "== $tag idle: sclk $(( $(cat $H/freq1_input)/1000000 )) MHz, mclk $(( $(cat $H/freq2_input)/1000000 )) MHz, $(( $(cat $H/power1_average)/1000000 )) W, level $(cat $G/power_dpm_force_performance_level)"
