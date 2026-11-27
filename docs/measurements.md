@@ -448,3 +448,44 @@ clocks at their top at once needs a power profile set by root; not tested.
 The shader changes also change what Windows would measure: `alu`, `lanes`, `occupancy`,
 `gpu,chase` and the GPU rows of `chains` / `chain-long` need a Windows rerun before the
 comparison is like for like.
+
+## Linux: GPU power settings set from the sandbox (2026-11-27, first pass)
+
+The sandbox account can now write `power_dpm_force_performance_level` and
+`pp_power_profile_mode` of the RX 9070 XT (host udev rule). The same short rows under each
+setting, no warmer, screen on, 20 s idle before each, one run each
+(`tools/linux/profiles.sh`, `proftab.py`; `docs/data/runs/gpu-power/`). Kernel 7.3.6.
+[MEASURED, single runs: a first pass, not medians of 4]
+
+| row | Windows | auto, default profile | level `high` | custom profile, GFXCLK min active 3300 |
+|---|---|---|---|---|
+| chain of 1,000 steps, kernel (us) | 8.96 | 12.0 | 8.24 | 5.92 |
+| chain of 1M steps (us) | 7156 | 11590 | 7925 | 5502 |
+| chain of 10M steps (us) | 69940 | 58130 | 79010 | 54860 |
+| 1M chains, kernel (us) | 202 | 293 | 198 | 161 |
+| 4096 nets, kernel (us) | 235 | 363 | 249 | 216 |
+| scalar load, 4 KiB (ns) | 11.96 | 24.8 | 16.9 | 11.8 |
+| shared-memory bandwidth, stride 1 (GB/s) | 12120 | 12580 | 9543 | 12620 |
+| staged upload, 1 GiB (GB/s) | 13.9 | 14.0 | 13.9 | 13.8 |
+| empty round trip (us) | 110 | 16.0 | 18.7 | 16.1 |
+| GPU latency, 512 MiB, scalar / vector (ns) | 248 / 240 | 348 / 329 | 262 / 260 | 427 / 393 |
+| idle after 20 s | | 1.55 GHz, 27 W | 2.5 GHz, 76 W | 2.5 GHz, 66 W |
+
+- **Custom profile** (`echo "6 0 0 4 3300 4 800 4587520 -65536 0" > pp_power_profile_mode`,
+  level `auto`): the core clock is at its boosted level from the first job. Every clock-bound
+  row beats Windows without the warmer, and none of the warmer's costs appear (uploads, round
+  trips unchanged). It does not raise the memory clock: past the caches it is the slowest
+  setting.
+- **Level `high`** is not "everything at the top": the memory clock is pinned at 1258 MHz
+  (latency past the caches within 5-8% of Windows), but the core clock is fixed near 2.5 GHz
+  with no boost, so long and heavy work loses 25-36%.
+- **Stock profiles** COMPUTE (5) and 3D_FULL_SCREEN (1) changed nothing measurable here.
+- **Fabric clock** (one run of `gpu --only chase` each): adding `6 1 0 4 2400 1 0 5898240
+  -6553 -6553` to the custom profile held FCLK at 2400 MHz and brought latency past the
+  caches to 311 / 316 ns at 512 MiB (from 427 / 395) and 67 / 88 ns at 8 MiB (from 86 / 123);
+  the memory clock still read 456 MHz. Windows: 248 / 240.
+
+So it can be done from this account: the custom core-clock profile replaces the warmer. Not
+done yet: 4 full runs under it; the memory clock together with the boosted core clock (the
+fabric-clock line gets part of the way); the same with the screen locked; idle power is ~40 W
+higher while the profile is set, so it belongs around a run, not left on.

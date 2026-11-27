@@ -51,9 +51,10 @@ how to apply them: `docs/speed-playbook.md`.
 `measurements.md`, "Linux gaps"; playbook rules 14-18. Open:
 - Windows rerun with the new shaders (alu, lanes, occupancy, gpu chase, chains GPU rows)
 - a clean Linux set with the screen on (runs 33-40 had it off: GPU memory rows from 96 MiB)
-- a GPU power profile set by root (`pp_power_profile_mode`,
-  `power_dpm_force_performance_level`): the only way seen to have the core clock and the
-  memory clock at their top together; it might replace the warmer. Needs the owner
+- GPU power settings (the sandbox may write them since 2026-11-27): first pass in
+  `measurements.md`. A custom profile with GFXCLK min active 3300 replaces the warmer in single
+  runs. Next: 4 full runs under it; core clock and memory clock both up (custom FCLK line,
+  or other custom values); the same with the screen locked; wrap set/restore into the run
 - pool round trip, workers awake: 1.1-1.2x behind, bimodal, cause not found
 - `mem` / `mem4` / `lds4` network kernels on RADV; sustained GPU peaks 2-4% lower
 - the page (`docs/page/strata.html`) and `docs/data/strata.csv` still show the 2026-10-15
