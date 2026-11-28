@@ -301,8 +301,11 @@ pub fn probeChase(gpa: std.mem.Allocator, out: *std.Io.Writer, quick: bool) !voi
     var buf: [64]u64 = undefined;
     var rng = std.Random.DefaultPrng.init(7);
     for (sizes(&buf, max)) |s| {
-        const ring = try mem.allocBig(u32, s / 4, .huge);
-        defer mem.freeBig(u32, ring);
+        const block = try mem.allocBig(u32, @max(s, mem.huge_page) / 4, .huge);
+        defer mem.freeBig(u32, block);
+        // Below 2 MiB the ring is cut from a huge page too: on scattered 4 KiB pages a ring near
+        // the L2 size overfills some L2 sets (1 MiB: 5.1-6.0 ns against 3.1, 2026-11-27).
+        const ring = block[0 .. s / 4];
         @memset(ring, 0);
         try buildRing(gpa, ring, rng.random(), line_u32);
         var start: u32 = 0;

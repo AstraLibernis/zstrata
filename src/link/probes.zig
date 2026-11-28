@@ -7,7 +7,8 @@
 //!              copies it over), direct (the CPU writes straight into VRAM through the
 //!              resizable BAR), and the GPU's copy alone (timestamps)
 //!   download   VRAM -> CPU memory by size: the GPU copies into a cached CPU-side buffer, then
-//!              the CPU copies it out; and the CPU reading VRAM directly (uncached)
+//!              the CPU copies it out (and each of the two alone); and the CPU reading VRAM
+//!              directly (uncached)
 //!   roundtrip  fixed cost of one trip: an empty submit, and a tiny dispatch whose 4-byte
 //!              result is read back; then split: recording vs resubmitting, and sleeping in
 //!              vkWaitForFences vs polling the fence vs polling briefly, then sleeping (hybrid)
@@ -88,16 +89,27 @@ pub fn probeDownload(gpa: std.mem.Allocator, lab: *Lab, out: *std.Io.Writer, qui
     for (sizes(quick)) |s| {
         var staged: [reps]f64 = undefined;
         var straight: [reps]f64 = undefined;
+        // The parts of a staged download: the GPU's copy alone (timestamps) and the CPU's copy
+        // out of the readback buffer alone. The rest of `staged` is submit and wait.
+        var dma: [reps]f64 = undefined;
+        var copy_out: [reps]f64 = undefined;
         // Reading VRAM directly is uncached and very slow; stop at 16 MiB.
         const do_direct = s <= 16 << 20;
         for (0..reps) |r| {
             var t0 = clock.nowNs();
             try lab.cmds.begin(ctx);
+            lab.stamps.reset(ctx, lab.cmds.cmd);
+            lab.stamps.write(ctx, lab.cmds.cmd, 0);
             ctx.vkd.cmdCopyBuffer(lab.cmds.cmd, lab.big.handle, readback.handle, &.{.{ .src_offset = 0, .dst_offset = 0, .size = s }});
+            lab.stamps.write(ctx, lab.cmds.cmd, 1);
             gpu.barrier(ctx, lab.cmds.cmd, .{ .copy = true }, .{ .transfer_write = true }, .{ .host = true }, .{ .host_read = true });
             try lab.cmds.submitAndWait(ctx);
+            const t1 = clock.nowNs();
             @memcpy(dst[0..s], readback.mapped.?[0..s]);
-            staged[r] = @floatFromInt(clock.nowNs() - t0);
+            const t2 = clock.nowNs();
+            staged[r] = @floatFromInt(t2 - t0);
+            copy_out[r] = @floatFromInt(t2 - t1);
+            dma[r] = try lab.stamps.elapsedNs(ctx, 0, 1);
             if (do_direct) {
                 t0 = clock.nowNs();
                 @memcpy(dst[0..s], direct.mapped.?[0..s]);
@@ -108,6 +120,10 @@ pub fn probeDownload(gpa: std.mem.Allocator, lab: *Lab, out: *std.Io.Writer, qui
         const sz: f64 = @floatFromInt(s);
         var ns = report.median(&staged);
         try report.write(out, .{ .device = "link", .probe = "download", .variant = "staged", .x = sz, .value = sz / ns, .unit = "GB/s", .ns = ns });
+        inline for (.{ .{ "gpu-copy-only", &dma }, .{ "copy-out-only", &copy_out } }) |c| {
+            const part = report.median(c[1]);
+            try report.write(out, .{ .device = "link", .probe = "download", .variant = c[0], .x = sz, .value = sz / part, .unit = "GB/s", .ns = part });
+        }
         if (do_direct) {
             ns = report.median(&straight);
             try report.write(out, .{ .device = "link", .probe = "download", .variant = "direct-read", .x = sz, .value = sz / ns, .unit = "GB/s", .ns = ns });

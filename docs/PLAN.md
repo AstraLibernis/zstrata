@@ -77,14 +77,19 @@ ahead are never work items. Check: `tools/linux/ceiling.py <4 Windows runs> -- <
 - **Not work items:** rows ahead of Windows, gaps inside run-to-run noise, and the absolute
   hardware limits this project measures (those are the map, not targets).
 
-Open items on 2026-11-27 (runs 41-44), each with its one experiment:
-| gap | Windows ahead | experiment | if it fails |
-|---|---|---|---|
-| `gpu/chase` past the caches | 2.3-3.1x | none in code: the memory clock drops with the screen off; needs `pp_dpm_mclk` (owner) | listed as `permission` |
-| `gpu/mlp` mem / mem4 / lds4 / reg-one | 1.07-1.6x | E6, weights copied into locals by hand | `tried` (RADV, report to Mesa via E5) |
-| `cpu/sync/pool-hot` | 1.16x | E4, `perf stat` of both modes | `tried` |
-| `link/download` staged / direct-read, `link/upload/staged` | 1.14-1.15x | one `perf` / timestamp split of a 256 MiB download | `tried` |
-| single rows: `cross/map` cpu-1 and gpu-with-transfer, `cpu/chase/latency` | 1 row each | the next 4-run set; open only if they stay | dropped as noise |
+State after the experiments (2026-11-27 evening, runs 45-48; `measurements.md`, "Ceiling
+experiments"): every probe-level gap is closed, accepted or `tried`.
+| gap | result |
+|---|---|
+| `gpu/chase` past the caches | `permission`: GPU memory clock; needs `pp_dpm_mclk` (owner) |
+| `gpu/mlp` mem / mem4 / reg | `driver` (E6): RADV does not hoist the weights; the hand copy (`reg`) is at parity best against best |
+| `gpu/mlp` lds / lds4 | `dominated`: never the best variant on either system |
+| `cpu/sync/pool-hot` | `tried` (E4): one extra L1 eviction per round trip in the slow mode; cause not found |
+| `link/download` staged, `link/upload/staged`, `cross/map/gpu-with-transfer` | `tried`: at parity or ahead when run alone; the gap is a full-run effect |
+| `link/download/direct-read` | `power`: the custom GPU profile costs 25% on CPU reads of VRAM |
+| `cpu/chase` at the L2 edge | **fixed**: rings under 2 MiB on a huge page (1 MiB 5.6 -> 3.1 ns; Windows 4.7) |
+| `cross/map/gpu-kernel` | `power`: parity on the default profile, behind under the custom one since the reboot |
+| **`cross/map/cpu-all` 64-256 KiB, `cross/trees/gpu-with-transfer` 256 KiB** | **OPEN**: ahead in runs 41-44, 1.2-1.4x behind since the evening reboot, alone too. EPP changed from `balance_performance` to `performance` in between; testing that needs the owner (one 4-run set on `balance_performance`) |
 
 When the table is empty or all `tried` / outside the code, S9 is finished and Linux work stops.
 

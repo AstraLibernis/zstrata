@@ -497,3 +497,54 @@ GPU latency past the caches. The screen locked during run 42 and was off for run
 512 MiB latency read 287-310 ns in runs 41-42 (Windows 248) and ~750 ns in 43-44, so the set
 is mixed for those rows and the memory clock stays the open GPU item. Not tried: pinning it
 through `pp_dpm_mclk` with level `manual` (root-only file).
+
+## Ceiling experiments (2026-11-27 evening)
+
+One bounded experiment per open gap (PLAN.md, "Ceiling target"). Governor and EPP `performance`,
+idle machine (load 0.4-0.6), card back on `auto` / profile 0 after every step.
+
+- **E6, network kernels with weights in memory.** The per-row pipeline statistics already
+  answer it. `mem-one` at W=64: AMD's compiler 165 VGPRs (weights hoisted into registers),
+  RADV 48 (reloaded on every use). Copying the rows a lane needs into locals by hand is the
+  `reg` variant. Best variant against best variant per network size, runs 23-26 against
+  41-44: Linux 0.89-0.98x at W=8-48 and 192, 1.03-1.50x at W=32 packed, 64, 96, 128, 256.
+  [MEASURED] Small-W `reg` stays 4-10% behind with equal VGPR counts and `gpu/alu` at parity:
+  instruction scheduling in RADV [INFERRED]. W=256 spills 1046 VGPRs on RADV (249 KB
+  scratch), but Linux's best there (`mem-one`, 1.11 TFLOP/s) matches Windows' best (`reg-one`,
+  1.08). `lds`/`lds4` are never the best variant on either system.
+- **E4, pool round trip.** `tools/linux/poolperf.zig` reads hardware counters per batch of
+  20,000 round trips, on both threads. Fast (~90-125 ns) and slow (~140-160 ns) batches run
+  the same ~150 instructions per round trip. In the slow mode the submitting thread adds about
+  1.1 L1 misses served from its own L2 (0.05-0.1 -> 1.2), 1.1 more lines from another core's
+  cache (8.3 -> 9.4) and 0.4 more pipeline resyncs (1.6 -> 2.0) per round trip; the helper
+  moves the same way, less. [MEASURED] So a hot line is evicted from L1 once per round trip.
+  What evicts it was not found; an SMT sibling sharing the L1 is untested. [INFERRED]
+- **Downloads.** New variants `download,gpu-copy-only` (timestamps) and `copy-out-only` split
+  `staged`. Run alone, 3 runs: GPU copy 21 GB/s from 256 KiB up, copy out 21-57 GB/s, staged
+  7.1 GB/s at 1 MiB (Windows 3.7, runs 41-44 2.0) and 10.6 at 1 GiB (Windows 11.8). Linux's
+  staged gap shows only inside a full run, after the earlier probes. [MEASURED] `direct-read`
+  is 0.073-0.080 GB/s on the default GPU profile (Windows 0.06-0.07) and 0.056 under the
+  custom profile: the profile that fixes short GPU jobs costs 25% on CPU reads of VRAM.
+  [MEASURED]
+- **Staged upload at 64 MiB** (1.14-1.19x behind in both 4-run sets) reads 14.2 GB/s run alone,
+  3 runs (Windows 13.65). Like the download, the transfer gap is a full-run effect. [MEASURED]
+- **CPU chase at the L2 edge: fixed.** Rings under 2 MiB were on 4 KiB pages (`allocBig` uses
+  huge pages from 2 MiB up). The L2 is physically indexed, so a ring scattered over 4 KiB pages
+  overfills some L2 sets before it reaches the L2's size. Cut from a huge page instead, 3 runs
+  each: 768 KiB 3.73-3.90 -> 2.88-2.90 ns, 1 MiB 5.14-6.00 -> 3.11-3.12, 1.5 MiB 8.74-9.87 ->
+  7.77-8.18 (Windows, 4 KiB pages: 3.47-3.67, 4.18-5.00, 8.17-8.72). [MEASURED] The probe now
+  does that for every size, so Linux `cpu,chase` rows under 2 MiB from before this change are
+  not comparable. For code: a working set near the L2 size reads faster on a huge page, not
+  only one past the TLB's reach (playbook rule 15). [DERIVED]
+- **Rows dropped as noise** (the ceiling rule: a single row must recur in the next 4-run set):
+  `cross/map/cpu-1` (runs 41-44 only), `cross/trees/gpu-with-transfer` (evening set only),
+  `cross/map/gpu-kernel` (Linux 1.3x ahead in 41-44, 1.2x behind in the evening set). [MEASURED]
+- **Final 4-run set, runs 45-48** (custom GPU profile, current code): every probe/variant median
+  is within 1.05x of Windows or accepted; median Windows advantage 0.982. [MEASURED]
+- **Since the evening reboot**, three rows that were ahead in runs 41-44 trail, alone as well as
+  in full runs. Tiny GPU kernels (`cross/map/gpu-kernel`, 1-64 KiB) are at parity on the default
+  GPU profile and 1.10-1.17x behind under the custom one, which put them 1.3x ahead that
+  morning. `cross/map/cpu-all` at 64-256 KiB went from 0.91-0.95 to 1.2-1.4, and
+  `cross/trees/gpu-with-transfer` at 256 KiB from 1.04 to 1.2-1.4, on either profile. [MEASURED]
+  EPP changed from `balance_performance` to `performance` across the reboot; that it causes
+  this is a hypothesis only, untested (it needs root). [INFERRED]

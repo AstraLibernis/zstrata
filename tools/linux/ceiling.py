@@ -7,10 +7,11 @@ overlap. A probe/variant is a GAP when its median Windows advantage exceeds GROU
 with fewer than 3 rows is judged by its rows only. A gap is accepted when
 docs/ceiling-exceptions.tsv names it with a cause outside the code (power, driver, permission) or
 as `tried`: one bounded experiment was run and recorded in docs/measurements.md without closing
-it. Everything else is OPEN. Rows where Linux is ahead are never work items."""
+it, or as `dominated`: on neither system is it the best variant at any size it was measured at
+(it is a map row, not something a program would choose). Everything else is OPEN. Rows where Linux is ahead are never work items."""
 import sys, csv, statistics as st, collections, os, fnmatch
 ROW_LIM, GROUP_LIM = 1.10, 1.05
-OUTSIDE = {'power', 'driver', 'permission', 'tried'}
+OUTSIDE = {'power', 'driver', 'permission', 'tried', 'dominated'}
 a = sys.argv[1:]; i = a.index('--'); W, L = a[:i], a[i + 1:]
 def load(files):
     d = collections.defaultdict(list); unit = {}

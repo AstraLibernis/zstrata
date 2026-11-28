@@ -1,2 +1,11 @@
 # pattern (device/probe/variant)	cause (power|driver|permission|code)	reason
 gpu/chase/*	permission	GPU memory clock drops with the screen off; pinning it needs write access to pp_dpm_mclk (owner, not granted yet). level high pins it but caps the core clock
+gpu/mlp/mem*	driver	E6 (2026-11-27): RADV reloads the weights on every use (mem-one W=64: 48 VGPRs) where AMD's compiler hoists them into registers (165). The hand copy (reg) on Linux matches or beats the best Windows variant up to W=128
+gpu/mlp/reg-*	driver	E6: same VGPR counts on both, gpu/alu at parity; small-W reg 4-10% behind is RADV scheduling. W=256 spills 1046 VGPRs on RADV; there Linux's best (mem-one 1.11) matches Windows' best (reg-one 1.08)
+gpu/mlp/lds*	dominated	never the best variant on either system at any W (reg wins up to W=192 on both)
+cpu/sync/pool-hot	tried	E4 (2026-11-27, tools/linux/poolperf.zig): same ~150 instructions per round trip in both modes; the slow mode adds ~1.1 L1 misses served from the own L2, ~1.1 lines from another core and ~0.4 resyncs per round trip on the submitting thread. What evicts the line is not found (SMT-sibling sharing not tested). 16 threads: Linux 2.4x ahead
+link/download/direct-read	power	the custom GPU profile costs 25% on CPU reads of VRAM (0.056 vs 0.073-0.080 GB/s on the default profile, 3 runs each, 2026-11-27); on the default profile Linux is ahead of Windows (0.06-0.07)
+link/download/staged	tried	run alone (3 runs, default and custom profile) Linux matches or beats Windows at every size (1 MiB 7.1 vs 3.7 GB/s, 1 GiB 10.6 vs 11.8); the gap only shows inside a full run, after the earlier probes. GPU copy alone 21 GB/s, copy out 21-57 GB/s (new download variants)
+link/upload/staged	tried	only at 64 MiB, in both 4-run sets (1.14-1.19x); run alone 3x it reads 14.2 GB/s against Windows' 13.65 (2026-11-27). Same full-run context as link/download/staged
+cross/map/gpu-with-transfer	tried	at 16-64 MiB, the transfer inside the job: the full-run context of link/upload/staged and link/download/staged
+cross/map/gpu-kernel	power	tiny GPU kernels (1-64 KiB): parity on the default GPU profile (1.00-1.03, 3 runs alone), 1.10-1.17 behind under the custom profile since the 2026-11-27 evening reboot (1.3x ahead under it in runs 41-44)
