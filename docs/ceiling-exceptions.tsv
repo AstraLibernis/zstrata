@@ -1,0 +1,2 @@
+# pattern (device/probe/variant)	cause (power|driver|permission|code)	reason
+gpu/chase/*	permission	GPU memory clock drops with the screen off; pinning it needs write access to pp_dpm_mclk (owner, not granted yet). level high pins it but caps the core clock

@@ -60,6 +60,34 @@ how to apply them: `docs/speed-playbook.md`.
 - the page (`docs/page/strata.html`) and `docs/data/strata.csv` still show the 2026-10-15
   container run
 
+## Ceiling target (Linux against Windows, set 2026-11-27)
+The target is **parity with Windows on the same machine, not beating it**. Rows where Linux is
+ahead are never work items. Check: `tools/linux/ceiling.py <4 Windows runs> -- <4 Linux runs>`
+(today: runs 23-26 against 41-44); exit 0 = met.
+
+- **Met when**, with 4 runs per side: no probe/variant (3+ rows) with a median Windows advantage
+  over 1.05x, and no row over 1.10x whose runs do not overlap. The exception is a gap listed in
+  `docs/ceiling-exceptions.tsv` whose cause lies outside this code (`power`, `driver`,
+  `permission`) or that is `tried`.
+- **Each open gap gets one bounded experiment** (one named hypothesis, one A/B, a
+  `measurements.md` entry). If it does not close the gap, list it as `tried` and stop. No second
+  round unless new evidence names a new cause.
+- **A change counts** only when it beats the noise in repeat runs (non-overlapping ranges over
+  4 runs) and has a named cause. A gain from one run, or with no mechanism, is not kept.
+- **Not work items:** rows ahead of Windows, gaps inside run-to-run noise, and the absolute
+  hardware limits this project measures (those are the map, not targets).
+
+Open items on 2026-11-27 (runs 41-44), each with its one experiment:
+| gap | Windows ahead | experiment | if it fails |
+|---|---|---|---|
+| `gpu/chase` past the caches | 2.3-3.1x | none in code: the memory clock drops with the screen off; needs `pp_dpm_mclk` (owner) | listed as `permission` |
+| `gpu/mlp` mem / mem4 / lds4 / reg-one | 1.07-1.6x | E6, weights copied into locals by hand | `tried` (RADV, report to Mesa via E5) |
+| `cpu/sync/pool-hot` | 1.16x | E4, `perf stat` of both modes | `tried` |
+| `link/download` staged / direct-read, `link/upload/staged` | 1.14-1.15x | one `perf` / timestamp split of a 256 MiB download | `tried` |
+| single rows: `cross/map` cpu-1 and gpu-with-transfer, `cpu/chase/latency` | 1 row each | the next 4-run set; open only if they stay | dropped as noise |
+
+When the table is empty or all `tried` / outside the code, S9 is finished and Linux work stops.
+
 ## Later (not started)
 - Apply the playbook to the other projects (zarbor, zmural and others), one at a time, when
   each is being worked on
