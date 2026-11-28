@@ -48,15 +48,15 @@ how to apply them: `docs/speed-playbook.md`.
 **Owner:** test on Linux; find, prove and fix what trails Windows. 4 runs before (run29-32),
 4 after with the warmer (run33-36), 4 after without (run37-40): aligned 2 MiB-page buffers (`lib/mem.zig`), the GPU keep-warm job
 (`--gpu-warm`, `gpu/warm.zig`), loops unrolled in `chains`, `chase` and `fma` shaders.
-`measurements.md`, "Linux gaps"; playbook rules 14-18. Open:
-- Windows rerun with the new shaders (alu, lanes, occupancy, gpu chase, chains GPU rows)
-- a clean Linux set with the screen on (runs 33-40 had it off: GPU memory rows from 96 MiB)
-- GPU power settings (the sandbox may write them since 2026-11-27): first pass in
-  `measurements.md`. A custom profile with GFXCLK min active 3300 replaces the warmer in single
-  runs. Next: 4 full runs under it; core clock and memory clock both up (custom FCLK line,
-  or other custom values); the same with the screen locked; wrap set/restore into the run
-- pool round trip, workers awake: 1.1-1.2x behind, bimodal, cause not found
-- `mem` / `mem4` / `lds4` network kernels on RADV; sustained GPU peaks 2-4% lower
+`measurements.md`, "Linux gaps" and "Ceiling experiments"; playbook rules 14-18.
+Since 2026-11-27 the custom GPU profile (GFXCLK min active 3300) replaces the warmer in runs
+(`tools/linux/fullruns.sh`; runs 41-48). Gaps are tracked against the ceiling target below. Open
+outside it:
+- Windows rerun with the current code (new shaders: alu, lanes, occupancy, gpu chase, chains GPU
+  rows; the chase rings under 2 MiB on huge pages; the download split)
+- the two rows that moved with the 2026-11-27 evening reboot (EPP), and whether the custom GPU
+  profile stays the default: it now costs 10-17% on tiny GPU kernels and 25% on CPU reads of VRAM
+- core and memory clock both up (needs `pp_dpm_mclk`)
 - the page (`docs/page/strata.html`) and `docs/data/strata.csv` still show the 2026-10-15
   container run
 

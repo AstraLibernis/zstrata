@@ -51,7 +51,9 @@ Runs on Linux and Windows from the same source; OS-specific calls sit behind
 - **Linux:** Vulkan through RADV, using the persisted stack in `~/.local/vulkan`
   (`tools/env.sh`; `VKPREFIX` overrides). `tools/linux/` has the helpers behind the Linux
   findings: `clkrun.py` (a run with the GPU clock beside every row), `pstate.py` (hold
-  amdgpu's stable pstate), `cmp.py` (Windows runs against Linux runs).
+  amdgpu's stable pstate), `cmp.py` (Windows runs against Linux runs), `ceiling.py` (whether the Linux
+  work is at its ceiling target, `docs/PLAN.md`), `poolperf.zig` (pool round trip with hardware
+  counters).
 - **Windows:** AMD's driver (it ships `vulkan-1.dll`). The build needs `glslc` from shaderc at
   `%USERPROFILE%\.local\shaderc\bin` (`VKPREFIX` overrides); the tests need the Khronos
   validation layer at `%USERPROFILE%\.local\vk-layers` (`VKLAYERS` overrides). Both are
@@ -102,7 +104,9 @@ off in test builds); `gpu.validation_messages` counts validation warnings and er
   the library; `--gpu-warm` and `src/gpu/warm.zig` (keeps the GPU clock up on Linux);
   `Context.aux_queue` (a second compute queue where the driver has one); the `chains`, `chase`
   and `fma` shaders do several steps per loop round, so their GPU rows are not comparable
-  with runs made before; `alloc` gains `*-small-pages` rows on Linux; `tools/linux/`.
+  with runs made before; `alloc` gains `*-small-pages` rows on Linux; `tools/linux/`. 2026-11-27: `cpu,chase` rings
+  under 2 MiB are cut from a huge page on Linux (rows under 2 MiB not comparable with earlier Linux
+  runs); `link,download` gains `gpu-copy-only` and `copy-out-only`; the Linux ceiling target.
 - **0.2.0** (2026-11-25): `report.progress` defaults to off in any test build; the Vulkan
   loader's notes are dropped unless `gpu.show_loader_notes` is set; the missing-validation-layer
   warning names `VK_ADD_LAYER_PATH` on Windows and `tools/env.sh` elsewhere.
